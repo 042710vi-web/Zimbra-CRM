@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
 import Brand from '../../components/common/Brand.jsx';
+import { Navigate, useNavigate } from 'react-router-dom';
 
-// HU: pendiente de documentar al recibir las historias de usuario.
-// Endpoint asociado: pendiente de confirmar con su historia de usuario.
+// HU-01: iniciar sesión con credenciales válidas.
+// Endpoint: POST /api/auth/login (consumido por auth.service.js).
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, session } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -15,10 +17,12 @@ export default function LoginPage() {
     event.preventDefault();
     setError('');
     setBusy(true);
-    try { await login({ email, password }); }
+    try { await login({ email, password }); navigate('/', { replace: true }); }
     catch (cause) { setError(cause.message); }
     finally { setBusy(false); }
   }
+
+  if (session?.token) return <Navigate to="/" replace />;
 
   return <main className="login-page">
     <section className="login-aside">

@@ -6,8 +6,8 @@ import { createTrial } from '../../services/descargas.service.js';
 import Field from '../../components/common/Field.jsx';
 import Notice from '../../components/common/Notice.jsx';
 
-// HU: pendiente de documentar al recibir las historias de usuario.
-// Endpoint asociado: pendiente de confirmar con su historia de usuario.
+// HU-13: registrar una prueba de producto por 60 días.
+// Endpoint: POST /api/trials (consumido por descargas.service.js).
 export default function DescargasPage({ suggestedClientId }) {
   const { session } = useAuth();
   const { products } = useProducts();

@@ -19,6 +19,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(() => {
+    // HU-02: cerrar sesión elimina el token local; no requiere endpoint remoto.
     sessionStorage.removeItem('zimbra-session');
     setSession(null);
   }, []);

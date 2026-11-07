@@ -7,12 +7,13 @@ import productsRoutes from './routes/productos.routes.js';
 import trialsRoutes from './routes/descargas.routes.js';
 import assignmentsRoutes from './routes/asignaciones.routes.js';
 import salesRoutes from './routes/ventas.routes.js';
+import healthRoutes from './routes/health.routes.js';
 import { errorHandler } from './middleware/error.middleware.js';
 
 const app = express();
 app.use(cors({ origin: env.frontendOrigin }));
 app.use(express.json({ limit: '1mb' }));
-app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientsRoutes);
 app.use('/api/products', productsRoutes);

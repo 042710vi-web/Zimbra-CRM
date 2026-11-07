@@ -5,8 +5,8 @@ import { createAssignment } from '../../services/asignaciones.service.js';
 import Field from '../../components/common/Field.jsx';
 import Notice from '../../components/common/Notice.jsx';
 
-// HU: pendiente de documentar al recibir las historias de usuario.
-// Endpoint asociado: pendiente de confirmar con su historia de usuario.
+// HU-23: asignar clientes a vendedores responsables.
+// Endpoint: POST /api/assignments (consumido por asignaciones.service.js).
 export default function AsignacionesPage({ suggestedClientId }) {
   const { session } = useAuth();
   const { busy, notice, run } = useApiAction();

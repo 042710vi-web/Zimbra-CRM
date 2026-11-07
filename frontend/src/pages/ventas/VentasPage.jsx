@@ -7,8 +7,8 @@ import Field from '../../components/common/Field.jsx';
 import Notice from '../../components/common/Notice.jsx';
 import { formatCurrency } from '../../utils/formatters.js';
 
-// HU: pendiente de documentar al recibir las historias de usuario.
-// Endpoint asociado: pendiente de confirmar con su historia de usuario.
+// HU-28: registrar una venta con sus productos y cantidades.
+// Endpoint: POST /api/sales (consumido por ventas.service.js).
 export default function VentasPage({ suggestedClientId }) {
   const { session } = useAuth();
   const { products } = useProducts();

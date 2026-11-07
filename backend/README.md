@@ -2,9 +2,10 @@
 
 ## Inicio
 
-1. Crear la base `zimbra_bd` en MySQL e importar el SQL compartido. Ese script borra y vuelve a crear la base si ya existe; revisa el contenido antes de ejecutarlo.
-2. Copiar `.env.example` como `.env` y configurar las credenciales MySQL y `JWT_SECRET`.
-3. Ejecutar `npm install` y `npm run dev`.
+1. Crear la base `zimbra_bd` en MySQL e importar el SQL de `database/CRM Zimbra.sql`. Ese script borra y vuelve a crear la base si ya existe; revisa el contenido antes de ejecutarlo.
+2. Desde la raíz del proyecto, ejecutar `npm install` para instalar las dependencias de backend y frontend.
+3. Copiar `backend/.env.example` como `backend/.env` y configurar las credenciales MySQL y `JWT_SECRET`.
+4. Ejecutar `npm run dev --workspace=backend` desde la raíz, o `npm run dev` para iniciar backend y frontend.
 
 La API queda en `http://localhost:3000`. Rutas implementadas:
 

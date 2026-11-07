@@ -1,7 +1,7 @@
 import { api } from '../api/client.js';
 
-// HU: pendiente de documentar al recibir las historias de usuario.
-// Endpoint asociado: pendiente de confirmar con su historia de usuario.
+// HU-01: inicio de sesión.
+// Endpoint: POST /api/auth/login.
 export function login(credentials) {
   return api('/auth/login', { method: 'POST', body: JSON.stringify(credentials) });
 }
