@@ -10,7 +10,7 @@
 
 1. Copia `.env.example` como `.env` si la API no está en la URL predeterminada.
 2. Ejecuta `npm install` dentro de `frontend/`.
-3. Ejecuta `npm run dev` y abre la URL que indique Vite (por defecto `http://localhost:5173`).
+3. Ejecuta `npm run dev` y abre `http://localhost:5175`.
 
 El inicio de sesión usa `POST /api/auth/login`. Después del login, el frontend consume `GET /api/products` y muestra formularios para `POST /api/clients`, `POST /api/trials`, `POST /api/assignments` y `POST /api/sales`.
 

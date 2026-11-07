@@ -41,7 +41,7 @@ npm install
 npm run dev
 ```
 
-Vite muestra la dirección del sitio; por defecto es `http://localhost:5173`. Si la API corre en otra dirección, actualiza `VITE_API_URL` en `frontend/.env`.
+El frontend corre en `http://localhost:5175`. Si la API corre en otra dirección, actualiza `VITE_API_URL` en `frontend/.env`.
 
 ## Endpoints implementados
 
