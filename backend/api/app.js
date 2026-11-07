@@ -1,0 +1,23 @@
+import express from 'express';
+import cors from 'cors';
+import { env } from '../config/env.js';
+import authRoutes from './routes/auth.routes.js';
+import clientsRoutes from './routes/clientes.routes.js';
+import productsRoutes from './routes/productos.routes.js';
+import trialsRoutes from './routes/descargas.routes.js';
+import assignmentsRoutes from './routes/asignaciones.routes.js';
+import salesRoutes from './routes/ventas.routes.js';
+import { errorHandler } from './middleware/error.middleware.js';
+
+const app = express();
+app.use(cors({ origin: env.frontendOrigin }));
+app.use(express.json({ limit: '1mb' }));
+app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+app.use('/api/auth', authRoutes);
+app.use('/api/clients', clientsRoutes);
+app.use('/api/products', productsRoutes);
+app.use('/api/trials', trialsRoutes);
+app.use('/api/assignments', assignmentsRoutes);
+app.use('/api/sales', salesRoutes);
+app.use(errorHandler);
+export default app;
