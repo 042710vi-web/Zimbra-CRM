@@ -8,9 +8,9 @@
 
 ## Inicio
 
-1. Copia `frontend/.env.example` como `frontend/.env` si la API no está en la URL predeterminada.
-2. Ejecuta `npm install` desde la raíz del proyecto para instalar todos los workspaces.
-3. Ejecuta `npm run dev --workspace=frontend` desde la raíz (o `npm run dev` para iniciar backend y frontend juntos) y abre la URL de Vite, normalmente `http://localhost:5173`.
+1. Copia `.env.example` como `.env` si la API no está en la URL predeterminada.
+2. Ejecuta `npm install` dentro de `frontend/`.
+3. Ejecuta `npm run dev` y abre `http://localhost:5175`.
 
 El inicio de sesión usa `POST /api/auth/login`. Después del login, el frontend consume `GET /api/products` y muestra formularios para `POST /api/clients`, `POST /api/trials`, `POST /api/assignments` y `POST /api/sales`.
 

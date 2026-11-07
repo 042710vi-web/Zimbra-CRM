@@ -35,7 +35,7 @@ Para iniciar API y frontend juntos, desde la raíz ejecuta:
 npm run dev
 ```
 
-La API queda en `http://localhost:3000` y Vite normalmente en `http://localhost:5173`. La salud de la API se consulta en `GET /api/health`. También puedes ejecutar `npm run dev --workspace=backend` o `npm run dev --workspace=frontend` por separado.
+El frontend corre en `http://localhost:5175`. Si la API corre en otra dirección, actualiza `VITE_API_URL` en `frontend/.env`.
 
 ## Endpoints implementados
 
