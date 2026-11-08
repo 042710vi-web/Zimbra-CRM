@@ -10,6 +10,8 @@ import AsignacionesPage from '../pages/asignaciones/AsignacionesPage.jsx';
 import VentasPage from '../pages/ventas/VentasPage.jsx';
 import RecuperarPasswordPage from '../pages/login/RecuperarPasswordPage.jsx';
 import RestablecerPasswordPage from '../pages/login/RestablecerPasswordPage.jsx';
+import InteraccionesPage from '../pages/interacciones/InteraccionesPage.jsx';
+import ReportesPage from '../pages/reportes/ReportesPage.jsx';
 
 function ProtectedLayout() {
   const { session } = useAuth();
@@ -23,6 +25,7 @@ function LoginRoute() {
 }
 
 function CrmRoutes() {
+  const { session } = useAuth();
   const [suggestedClientId, setSuggestedClientId] = useState(null);
   return <Routes>
     <Route path="/recuperar" element={<RecuperarPasswordPage />} />
@@ -34,6 +37,8 @@ function CrmRoutes() {
       <Route path="/pruebas" element={<DescargasPage suggestedClientId={suggestedClientId} />} />
       <Route path="/asignaciones" element={<AsignacionesPage suggestedClientId={suggestedClientId} />} />
       <Route path="/ventas" element={<VentasPage suggestedClientId={suggestedClientId} />} />
+      <Route path="/interacciones" element={<InteraccionesPage />} />
+      {session?.user?.role === 'Administrador' && <Route path="/reportes" element={<ReportesPage />} />}
     </Route>
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>;

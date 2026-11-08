@@ -5,3 +5,8 @@ import { api } from '../api/client.js';
 export function createAssignment(token, data) {
   return api('/assignments', { method: 'POST', token, body: JSON.stringify(data) });
 }
+
+// HU-24: consultar asignaciones e historial.
+export function listAssignments(token, params = {}) {
+  return api(`/assignments?${new URLSearchParams(params)}`, { token });
+}

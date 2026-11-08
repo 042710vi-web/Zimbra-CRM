@@ -7,7 +7,9 @@ const menu = [
   ['/clientes', 'Registrar cliente', '+'],
   ['/pruebas', 'Pruebas gratuitas', '◷'],
   ['/asignaciones', 'Asignaciones', '↗'],
+  ['/interacciones', 'Interacciones', '☏'],
   ['/ventas', 'Registrar venta', '$'],
+  ['/reportes', 'Reportes', '▤'],
 ];
 
 export default function AppLayout() {
@@ -18,7 +20,7 @@ export default function AppLayout() {
     <aside className="sidebar">
       <Brand />
       <div className="workspace-label">ESPACIO DE TRABAJO</div>
-      <nav>{menu.map(([path, label, icon]) => <NavLink key={path} to={path} end={path === '/'} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><span className="nav-icon">{icon}</span>{label}</NavLink>)}</nav>
+      <nav>{menu.filter(([path]) => path !== '/reportes' || session.user.role === 'Administrador').map(([path, label, icon]) => <NavLink key={path} to={path} end={path === '/'} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><span className="nav-icon">{icon}</span>{label}</NavLink>)}</nav>
       <div className="sidebar-bottom"><div className="online-dot" /> Sistema conectado</div>
     </aside>
     <main className="main-area">

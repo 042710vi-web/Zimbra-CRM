@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useApiAction } from '../../hooks/useApiAction.js';
 import { useProducts } from '../../hooks/useProducts.js';
-import { createSale } from '../../services/ventas.service.js';
+import { createSale, listSales } from '../../services/ventas.service.js';
 import Field from '../../components/common/Field.jsx';
 import Notice from '../../components/common/Notice.jsx';
 import { formatCurrency } from '../../utils/formatters.js';
@@ -17,6 +17,22 @@ export default function VentasPage({ suggestedClientId }) {
   const vendorId = session.user.vendorId;
   const isAdmin = session.user.role === 'Administrador';
   const [form, setForm] = useState({ id_cliente: '', id_vendedor: '', metodo_pago: 'Transferencia', id_producto: '', cantidad: 1 });
+  const [sales, setSales] = useState([]);
+  const [salesError, setSalesError] = useState('');
+  const [salesBusy, setSalesBusy] = useState(true);
+
+  async function refreshSales() {
+    setSalesBusy(true);
+    setSalesError('');
+    try {
+      const result = await listSales(session.token, { page: 1, limit: 50 });
+      setSales(result.data);
+    } catch (error) {
+      setSalesError(error.message);
+    } finally { setSalesBusy(false); }
+  }
+
+  useEffect(() => { refreshSales(); }, [session.token]);
 
   useEffect(() => {
     if (suggestedClientId && !form.id_cliente) setForm((current) => ({ ...current, id_cliente: String(suggestedClientId) }));
@@ -31,7 +47,10 @@ export default function VentasPage({ suggestedClientId }) {
       items: [{ id_producto: Number(form.id_producto), cantidad: Number(form.cantidad) }],
     };
     const result = await run(() => createSale(session.token, data));
-    if (result) setForm((current) => ({ ...current, id_cliente: '', id_producto: '', cantidad: 1 }));
+    if (result) {
+      setForm((current) => ({ ...current, id_cliente: '', id_producto: '', cantidad: 1 }));
+      await refreshSales();
+    }
   }
 
   return <><div className="page-heading"><div><span className="eyebrow">CIERRE COMERCIAL</span><h1>Registrar venta</h1><p>Registra la venta y congela el precio actual de cada producto.</p></div></div><Notice notice={notice} />
@@ -47,5 +66,12 @@ export default function VentasPage({ suggestedClientId }) {
       </div></div>
       <div className="form-actions"><span className="muted">La venta, su detalle y auditoría se guardan en una transacción.</span><button className="button primary" disabled={busy || !commercialProducts.length || (!isAdmin && !vendorId)}>{busy ? 'Registrando…' : 'Registrar venta'} <span>→</span></button></div>
     </form>
+    <div className="section-title clients-list-heading"><div><h2>Ventas registradas</h2><p>Historial comercial con su detalle de productos.</p></div><span className="count-chip">{sales.length} registros</span></div>
+    {salesError && <div className="notice error" role="alert">{salesError}</div>}
+    <section className="client-list-card"><div className="client-table-wrap"><table className="client-table"><thead><tr><th>Venta</th><th>Cliente</th><th>Vendedor</th><th>Productos</th><th>Total</th><th>Estado</th></tr></thead><tbody>
+      {sales.map((sale) => <tr key={sale.id_venta}><td><strong>#{sale.id_venta}</strong><small>{sale.numero_contrato || sale.metodo_pago || 'Sin contrato'}</small></td><td>{sale.nombre_completo}</td><td>{sale.nombre_vendedor}</td><td>{(sale.detalles || []).map((line) => `${line.nombre_producto} × ${line.cantidad}`).join(', ') || '—'}</td><td>{formatCurrency(sale.total_venta)}</td><td><span className="client-status">{sale.estado_venta}</span></td></tr>)}
+      {!salesBusy && sales.length === 0 && <tr><td colSpan="6" className="client-empty">No hay ventas para mostrar.</td></tr>}
+      {salesBusy && <tr><td colSpan="6" className="client-empty">Cargando ventas…</td></tr>}
+    </tbody></table></div></section>
   </>;
 }

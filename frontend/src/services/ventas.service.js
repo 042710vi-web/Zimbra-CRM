@@ -5,3 +5,8 @@ import { api } from '../api/client.js';
 export function createSale(token, data) {
   return api('/sales', { method: 'POST', token, body: JSON.stringify(data) });
 }
+
+// HU-29: consultar ventas con sus detalles y filtros.
+export function listSales(token, params = {}) {
+  return api(`/sales?${new URLSearchParams(params)}`, { token });
+}
