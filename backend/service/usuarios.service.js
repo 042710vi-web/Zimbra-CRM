@@ -1,1 +1,1 @@
-// Contrato pendiente para los endpoints de usuarios.
+export { listUsers, registerUser, changeUserStatus } from '../serviceimpl/usuarios.service.impl.js';

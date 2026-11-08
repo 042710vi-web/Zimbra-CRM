@@ -1,7 +1,7 @@
 import { api } from '../api/client.js';
 
-// HU: pendiente de documentar al recibir las historias de usuario.
-// Endpoint asociado: pendiente de confirmar con su historia de usuario.
+// HU-11: consultar el catálogo de productos.
+// Endpoint: GET /api/products.
 export function listProducts(token) {
   return api('/products', { token });
 }

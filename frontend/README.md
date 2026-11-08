@@ -30,4 +30,4 @@ Para iniciar sesión, usa una cuenta y contraseña válidas de la tabla `usuario
 - `src/assets/`: estilos e imágenes.
 - `src/utils/`: funciones auxiliares.
 
-Los servicios y las pantallas de los seis flujos tienen comentarios `HU` y `Endpoint` pendientes. Se completarán con los identificadores e historias que se compartan; no se asignaron historias por suposición.
+Los comentarios de servicios y pantallas asocian los flujos implementados con HU-01, HU-05, HU-11, HU-13, HU-23 y HU-28. El cierre de sesión del cliente se relaciona con HU-02; la autorización y el manejo de errores con HU-03 y HU-36. Los demás módulos quedan pendientes de implementar y asociar a sus historias.

@@ -17,27 +17,21 @@ Sistema CRM para gestionar prospectos, pruebas de producto, asignaciones comerci
 
 El SQL del proyecto está en [`backend/database/CRM Zimbra.sql`](backend/database/CRM%20Zimbra.sql). **Antes de importarlo, revisa su contenido:** incluye `DROP DATABASE IF EXISTS zimbra_bd`, por lo que elimina esa base si ya existe y luego la vuelve a crear. Impórtalo con MySQL Workbench solo si estás de acuerdo con reemplazarla.
 
-## Inicio del backend
+## Instalación e inicio
 
-En PowerShell, desde la raíz del proyecto:
+Desde la raíz, prepara las variables de entorno e instala todas las dependencias de ambos workspaces con un solo comando:
 
 ```powershell
 Copy-Item backend/.env.example backend/.env
-Set-Location backend
+Copy-Item frontend/.env.example frontend/.env
 npm install
-npm run dev
 ```
 
-Configura `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` y `JWT_SECRET` en `backend/.env`. La API inicia en `http://localhost:3000`; puedes comprobarla en `GET /api/health`.
+Configura `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` y `JWT_SECRET` en `backend/.env`. Si la API no está en `http://localhost:3000/api`, actualiza `VITE_API_URL` en `frontend/.env`.
 
-## Inicio del frontend
-
-Abre otra terminal en la raíz del proyecto:
+Para iniciar API y frontend juntos, desde la raíz ejecuta:
 
 ```powershell
-Copy-Item frontend/.env.example frontend/.env
-Set-Location frontend
-npm install
 npm run dev
 ```
 
@@ -63,4 +57,4 @@ backend/   API, capas de servicio, repositorios, entidades Sequelize y SQL
 frontend/  aplicación React organizada por páginas, servicios y componentes
 ```
 
-Las historias de usuario y su correspondencia con los endpoints del frontend quedan pendientes de la información que se comparta para documentarlas.
+Los flujos iniciales están relacionados en sus comentarios de código con HU-01, HU-05, HU-11, HU-13, HU-23 y HU-28. La validación de acceso y errores también referencia HU-03 y HU-36. Los módulos aún no implementados quedan pendientes de asociar a sus historias.

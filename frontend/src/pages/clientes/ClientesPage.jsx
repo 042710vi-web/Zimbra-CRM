@@ -5,8 +5,8 @@ import { createClient } from '../../services/clientes.service.js';
 import Field from '../../components/common/Field.jsx';
 import Notice from '../../components/common/Notice.jsx';
 
-// HU: pendiente de documentar al recibir las historias de usuario.
-// Endpoint asociado: pendiente de confirmar con su historia de usuario.
+// HU-05: registrar nuevos clientes.
+// Endpoint: POST /api/clients (consumido por clientes.service.js).
 export default function ClientesPage({ onCreated }) {
   const { session } = useAuth();
   const { busy, notice, run } = useApiAction();

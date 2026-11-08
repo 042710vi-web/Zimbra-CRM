@@ -1,7 +1,7 @@
 import { api } from '../api/client.js';
 
-// HU: pendiente de documentar al recibir las historias de usuario.
-// Endpoint asociado: pendiente de confirmar con su historia de usuario.
+// HU-23: asignar clientes a vendedores responsables.
+// Endpoint: POST /api/assignments.
 export function createAssignment(token, data) {
   return api('/assignments', { method: 'POST', token, body: JSON.stringify(data) });
 }

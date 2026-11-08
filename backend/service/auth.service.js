@@ -1,1 +1,1 @@
-export { login } from '../serviceimpl/auth.service.impl.js';
+export { login, logout } from '../serviceimpl/auth.service.impl.js';
