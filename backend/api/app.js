@@ -7,6 +7,8 @@ import productsRoutes from './routes/productos.routes.js';
 import trialsRoutes from './routes/descargas.routes.js';
 import assignmentsRoutes from './routes/asignaciones.routes.js';
 import salesRoutes from './routes/ventas.routes.js';
+import companiesRoutes from './routes/empresas.routes.js';
+import usersRoutes from './routes/usuarios.routes.js';
 import healthRoutes from './routes/health.routes.js';
 import { errorHandler } from './middleware/error.middleware.js';
 
@@ -20,5 +22,7 @@ app.use('/api/products', productsRoutes);
 app.use('/api/trials', trialsRoutes);
 app.use('/api/assignments', assignmentsRoutes);
 app.use('/api/sales', salesRoutes);
+app.use('/api/empresas', companiesRoutes);
+app.use('/api/users', usersRoutes);
 app.use(errorHandler);
 export default app;
