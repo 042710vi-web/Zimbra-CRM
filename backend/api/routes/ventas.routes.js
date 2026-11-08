@@ -1,8 +1,15 @@
 import { Router } from 'express';
-import { create } from '../../apicontroller/ventas.controller.js';
+import { changeStatus, create, list, update } from '../../apicontroller/ventas.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
+import { allowRoles } from '../middleware/role.middleware.js';
 const router = Router();
-// HU-28: registrar una venta con su detalle.
-// Endpoint: POST /api/sales.
-router.post('/', authenticate, create);
+router.use(authenticate);
+// HU-29: GET /api/sales consulta ventas y detalle.
+router.get('/', list);
+// HU-28: POST /api/sales registra venta y detalle de productos.
+router.post('/', create);
+// HU-30: POST /api/sales/actualizar actualiza una venta pendiente.
+router.post('/actualizar', update);
+// HU-31: POST /api/sales/cambiar-estado completa o cancela venta (solo administrador).
+router.post('/cambiar-estado', allowRoles('Administrador'), changeStatus);
 export default router;

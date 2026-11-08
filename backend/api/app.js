@@ -11,6 +11,7 @@ import salesRoutes from './routes/ventas.routes.js';
 import reportsRoutes from './routes/reportes.routes.js';
 import companiesRoutes from './routes/empresas.routes.js';
 import usersRoutes from './routes/usuarios.routes.js';
+import vendorsRoutes from './routes/vendedores.routes.js';
 import healthRoutes from './routes/health.routes.js';
 import { errorHandler } from './middleware/error.middleware.js';
 
@@ -28,5 +29,6 @@ app.use('/api/sales', salesRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/empresas', companiesRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/vendors', vendorsRoutes);
 app.use(errorHandler);
 export default app;

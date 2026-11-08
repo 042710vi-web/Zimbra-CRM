@@ -1,1 +1,1 @@
-// Contrato pendiente para los endpoints de interacciones.
+export { createInteraction, getInteractions } from '../serviceimpl/interacciones.service.impl.js';

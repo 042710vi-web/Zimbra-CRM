@@ -1,1 +1,1 @@
-export { registerSale } from '../serviceimpl/ventas.service.impl.js';
+export { changeSaleState, editSale, getSales, registerSale } from '../serviceimpl/ventas.service.impl.js';

@@ -1,9 +1,15 @@
 import { Router } from 'express';
-import { create } from '../../apicontroller/asignaciones.controller.js';
+import { changeAssignee, close, create, list } from '../../apicontroller/asignaciones.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { allowRoles } from '../middleware/role.middleware.js';
 const router = Router();
-// HU-23: asignar clientes a vendedores responsables.
-// Endpoint: POST /api/assignments.
-router.post('/', authenticate, allowRoles('Administrador'), create);
+router.use(authenticate);
+// HU-24: GET /api/assignments lista asignaciones del vendedor o todas para administrador.
+router.get('/', list);
+// HU-23: POST /api/assignments asigna un prospecto (solo administrador).
+router.post('/', allowRoles('Administrador'), create);
+// HU-25: POST /api/assignments/reasignar conserva y finaliza la asignación anterior.
+router.post('/reasignar', allowRoles('Administrador'), changeAssignee);
+// HU-25: POST /api/assignments/finalizar finaliza la asignación activa.
+router.post('/finalizar', allowRoles('Administrador'), close);
 export default router;
