@@ -8,6 +8,8 @@ import ClientesPage from '../pages/clientes/ClientesPage.jsx';
 import DescargasPage from '../pages/descargas/DescargasPage.jsx';
 import AsignacionesPage from '../pages/asignaciones/AsignacionesPage.jsx';
 import VentasPage from '../pages/ventas/VentasPage.jsx';
+import RecuperarPasswordPage from '../pages/login/RecuperarPasswordPage.jsx';
+import RestablecerPasswordPage from '../pages/login/RestablecerPasswordPage.jsx';
 
 function ProtectedLayout() {
   const { session } = useAuth();
@@ -23,6 +25,8 @@ function LoginRoute() {
 function CrmRoutes() {
   const [suggestedClientId, setSuggestedClientId] = useState(null);
   return <Routes>
+    <Route path="/recuperar" element={<RecuperarPasswordPage />} />
+    <Route path="/restablecer" element={<RestablecerPasswordPage />} />
     <Route path="/login" element={<LoginRoute />} />
     <Route element={<ProtectedLayout />}>
       <Route path="/" element={<DashboardPage />} />

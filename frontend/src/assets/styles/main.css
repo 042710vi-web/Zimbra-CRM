@@ -30,3 +30,38 @@ img,svg,video,canvas{max-width:100%;height:auto}
   .product-row{flex-wrap:wrap}
   .product-price{margin-left:41px}
 }
+.login-forgot {
+  display: flex;
+  justify-content: flex-end;
+  margin: -7px 0 18px;
+  font-size: 11px;
+}
+
+.login-forgot a,
+.auth-back a,
+.dev-reset-link a {
+  color: #6254d7;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.login-forgot a:hover,
+.auth-back a:hover,
+.dev-reset-link a:hover {
+  text-decoration: underline;
+}
+
+.auth-back {
+  text-align: center;
+  margin: 19px 0 0;
+  font-size: 11px;
+}
+
+.dev-reset-link {
+  display: block;
+  margin-top: 8px;
+}
+
+.auth-button-link {
+  text-decoration: none;
+}
