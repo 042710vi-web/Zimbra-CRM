@@ -1,4 +1,3 @@
-
 DROP DATABASE IF EXISTS zimbra_bd;
 CREATE DATABASE zimbra_bd;
 USE zimbra_bd;
@@ -82,7 +81,8 @@ CREATE TABLE campanas_marketing (
     fecha_inicio DATE,
     fecha_fin DATE,
     estado VARCHAR(20) DEFAULT 'Activa',
-    CONSTRAINT chk_estado_campana CHECK (estado IN ('Activa','Inactiva'))
+    CONSTRAINT chk_estado_campana CHECK (estado IN ('Activa','Inactiva')),
+    CONSTRAINT chk_fechas_campana CHECK (fecha_fin >= fecha_inicio)
 );
 
 /* Catálogo de acciones rastreables y el puntaje asignado a cada una
@@ -270,36 +270,36 @@ INSERT INTO vendedores (id_vendedor, nombre_vendedor, correo_vendedor, estado) V
 
 -- 2.3 usuarios (30)
 INSERT INTO usuarios (id_usuario, id_vendedor, correo_acceso, password_hash, rol, estado, fecha_creacion) VALUES
-(1,NULL,'admin@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Administrador',1,'2026-06-01 08:00:00'),
-(2,NULL,'coordinacion@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Administrador',1,'2026-06-01 08:05:00'),
-(3,1,'ventas.carlos@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 09:10:00'),
-(4,2,'ventas.laura@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 09:20:00'),
-(5,3,'ventas.andresram@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 09:30:00'),
-(6,4,'ventas.paulaher@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 09:40:00'),
-(7,5,'ventas.juliancas@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 09:50:00'),
-(8,6,'ventas.dianaroj@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 10:00:00'),
-(9,7,'ventas.felipeort@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 10:10:00'),
-(10,8,'ventas.nataliavar@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 10:20:00'),
-(11,9,'ventas.sebastianpar@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 10:30:00'),
-(12,10,'ventas.camilabel@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 10:40:00'),
-(13,11,'ventas.mauricioleo@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 10:50:00'),
-(14,12,'ventas.valentinacru@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 11:00:00'),
-(15,13,'ventas.ricardosal@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 11:10:00'),
-(16,14,'ventas.julianapen@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 11:20:00'),
-(17,15,'ventas.estebanmol@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 11:30:00'),
-(18,16,'ventas.carolinadua@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 11:40:00'),
-(19,17,'ventas.santiagoari@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 11:50:00'),
-(20,18,'ventas.marianator@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 12:00:00'),
-(21,19,'ventas.danielqui@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 12:10:00'),
-(22,20,'ventas.luisafer@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 12:20:00'),
-(23,21,'ventas.jorgecar@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 12:30:00'),
-(24,22,'ventas.sofiaiba@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 12:40:00'),
-(25,23,'ventas.camilozap@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 12:50:00'),
-(26,24,'ventas.isabelarui@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 13:00:00'),
-(27,25,'ventas.nicolascor@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 13:10:00'),
-(28,26,'ventas.gabrielanav@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 13:20:00'),
-(29,27,'ventas.hectorber@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 13:30:00'),
-(30,28,'ventas.angelasua@zimbra.local','$2b$12$kRrg0xKeVioMpNWg5y9ceO3YHqr7rW7bKD0lygoB79YTfX4OIWa','Vendedor',1,'2026-06-02 13:40:00');
+(1,NULL,'admin@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Administrador',1,'2026-06-01 08:00:00'),
+(2,NULL,'coordinacion@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Administrador',1,'2026-06-01 08:05:00'),
+(3,1,'ventas.carlos@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 09:10:00'),
+(4,2,'ventas.laura@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 09:20:00'),
+(5,3,'ventas.andresram@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 09:30:00'),
+(6,4,'ventas.paulaher@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 09:40:00'),
+(7,5,'ventas.juliancas@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 09:50:00'),
+(8,6,'ventas.dianaroj@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 10:00:00'),
+(9,7,'ventas.felipeort@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 10:10:00'),
+(10,8,'ventas.nataliavar@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 10:20:00'),
+(11,9,'ventas.sebastianpar@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 10:30:00'),
+(12,10,'ventas.camilabel@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 10:40:00'),
+(13,11,'ventas.mauricioleo@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 10:50:00'),
+(14,12,'ventas.valentinacru@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 11:00:00'),
+(15,13,'ventas.ricardosal@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 11:10:00'),
+(16,14,'ventas.julianapen@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 11:20:00'),
+(17,15,'ventas.estebanmol@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 11:30:00'),
+(18,16,'ventas.carolinadua@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 11:40:00'),
+(19,17,'ventas.santiagoari@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 11:50:00'),
+(20,18,'ventas.marianator@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 12:00:00'),
+(21,19,'ventas.danielqui@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 12:10:00'),
+(22,20,'ventas.luisafer@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 12:20:00'),
+(23,21,'ventas.jorgecar@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 12:30:00'),
+(24,22,'ventas.sofiaiba@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 12:40:00'),
+(25,23,'ventas.camilozap@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 12:50:00'),
+(26,24,'ventas.isabelarui@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 13:00:00'),
+(27,25,'ventas.nicolascor@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 13:10:00'),
+(28,26,'ventas.gabrielanav@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 13:20:00'),
+(29,27,'ventas.hectorber@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 13:30:00'),
+(30,28,'ventas.angelasua@zimbra.local','$2a$12$x3ZaAnnH6vWElJPgo3Pjhuqy4SIeWJlhOOjT7ARN.dvfoTK/LngfC','Vendedor',1,'2026-06-02 13:40:00');
 
 -- 2.4 productos (30)
 INSERT INTO productos (id_producto, nombre_producto, tipo_licencia, precio, estado) VALUES
@@ -766,7 +766,7 @@ INSERT INTO detalle_ventas (id_detalle, id_venta, id_producto, cantidad, precio_
 (39,21,19,10,95000,950000),
 (40,22,11,7,85000,595000),
 (41,23,11,5,85000,425000),
-(42,23,17,0,45000,0),
+(42,23,17,1,45000,45000),
 (43,24,11,8,85000,680000),
 (44,25,15,5,160000,800000),
 (45,25,20,12,110000,1320000),
@@ -846,48 +846,51 @@ INSERT INTO auditoria_cambios (id_auditoria, tabla, id_registro, campo, valor_an
 (29,'descargas_prueba',6,'estado_prueba','Activa','Vencida','root@localhost','2026-10-12 10:00:00'),
 (30,'descargas_prueba',7,'estado_prueba','Activa','Vencida','root@localhost','2026-09-18 10:00:00');
 
+-- Ajuste: total_venta de cada venta = suma de su detalle (los datos simulados no cuadraban)
+UPDATE ventas v SET total_venta = (SELECT SUM(d.subtotal) FROM detalle_ventas d WHERE d.id_venta = v.id_venta);
+
 /* ================= TRANSACCIONES ACID ================= */
 -- Transacción 1: HU-28 | POST /api/sales | Venta con SAVEPOINT
 START TRANSACTION;
-INSERT INTO ventas (id_cliente, id_vendedor, estado_venta, metodo_pago, total_venta) VALUES (5, 12, 'Pendiente', 'Transferencia', 0);
-INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES ((SELECT MAX(id_venta) FROM ventas), 15, 5, 160000, 800000);
+INSERT INTO ventas (id_venta, id_cliente, id_vendedor, estado_venta, metodo_pago, total_venta) VALUES (31, 5, 12, 'Pendiente', 'Transferencia', 0);
+INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (31, 15, 5, 160000, 800000);
 SAVEPOINT item1_registrado;
-INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES ((SELECT MAX(id_venta) FROM ventas), 20, 3, 110000, 330000);
+INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (31, 20, 3, 110000, 330000);
 SAVEPOINT item2_registrado;
-INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES ((SELECT MAX(id_venta) FROM ventas), 24, 2, 480000, 960000);
+INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (31, 24, 2, 480000, 960000);
 ROLLBACK TO SAVEPOINT item2_registrado;
-UPDATE ventas SET total_venta = (SELECT SUM(subtotal) FROM detalle_ventas WHERE id_venta = (SELECT MAX(id_venta) FROM ventas)) WHERE id_venta = (SELECT MAX(id_venta) FROM ventas);
-INSERT INTO auditoria_cambios (tabla, id_registro, campo, valor_anterior, valor_nuevo, usuario_bd) VALUES ('ventas', (SELECT MAX(id_venta) FROM ventas), 'estado_venta', NULL, 'Pendiente', CURRENT_USER());
+UPDATE ventas SET total_venta = (SELECT SUM(subtotal) FROM detalle_ventas WHERE id_venta = 31) WHERE id_venta = 31;
+INSERT INTO auditoria_cambios (tabla, id_registro, campo, valor_anterior, valor_nuevo, usuario_bd) VALUES ('ventas', 31, 'estado_venta', NULL, 'Pendiente', CURRENT_USER());
 COMMIT;
 
--- Transacción 2: HU-25 | POST /api/assignments/reassign | Reasignar cliente (ROLLBACK completo)
+-- Transacción 2: HU-25 | POST /api/assignments/reasignar | Reasignar cliente (ROLLBACK completo)
 START TRANSACTION;
 UPDATE asignaciones_crm SET estado = 'Finalizada', fecha_fin = NOW() WHERE id_cliente = 19 AND estado = 'Activa';
 INSERT INTO asignaciones_crm (id_cliente, id_vendedor, estado) VALUES (19, 29, 'Activa');
 ROLLBACK;
 
--- Transacción 3: HU-31 | POST /api/sales/convert | Convertir prueba (ROLLBACK completo)
+-- Transacción 3: HU-31 | POST /api/sales/cambiar-estado | Convertir prueba (ROLLBACK completo)
 START TRANSACTION;
 UPDATE descargas_prueba SET estado_prueba = 'Convertida' WHERE id_descarga = 2 AND estado_prueba = 'Activa';
 ROLLBACK;
 
 -- Transacción 4: HU-05 | POST /api/clients | Cliente con empresa (ROLLBACK completo)
 START TRANSACTION;
-INSERT INTO empresas (nombre_empresa, sector_industria, sitio_web) VALUES ('Empresa Prueba SAS','Tecnología','https://www.empresaprueba.co');
-INSERT INTO clientes (id_empresa, nombre_completo, correo_electronico, telefono) VALUES ((SELECT MAX(id_empresa) FROM empresas), 'Cliente Nuevo Prueba', 'tatiana.ospina25@grupodigital.co', '+57 300 000 0000');
+INSERT INTO empresas (id_empresa, nombre_empresa, sector_industria, sitio_web) VALUES (31, 'Empresa Prueba SAS','Tecnología','https://www.empresaprueba.co');
+INSERT INTO clientes (id_empresa, nombre_completo, correo_electronico, telefono) VALUES (31, 'Cliente Nuevo Prueba', 'cliente.nuevo.prueba@empresaprueba.co', '+57 300 000 0000');
 ROLLBACK;
 
--- Transacción 5: HU-13 | POST /api/trials | Registrar descarga (ROLLBACK completo)
+-- Transacción 5: HU-13 | POST /api/trials | Registrar descarga (COMMIT)
 START TRANSACTION;
 INSERT INTO descargas_prueba (id_cliente, id_producto, fecha_inicio, fecha_fin, estado_prueba) VALUES (1, 4, CURRENT_DATE, DATE_ADD(CURRENT_DATE, INTERVAL 60 DAY), 'Activa');
-ROLLBACK;
+COMMIT;
 
--- Transacción 6: HU-26 | POST /api/interactions | Registrar interacción (ROLLBACK completo)
+-- Transacción 6: HU-26 | POST /api/interactions | Registrar interacción (COMMIT)
 START TRANSACTION;
 INSERT INTO interacciones (id_asignacion, tipo_interaccion, resultado, notas) VALUES (1, 'Llamada', 'Interesado', 'Llamada de seguimiento: cliente interesado.');
-ROLLBACK;
+COMMIT;
 
--- Transacción 7: HU-08 | POST /api/clients/change-status | Cambiar estado (SAVEPOINT parcial)
+-- Transacción 7: HU-08 | POST /api/clients/cambiar-estado | Cambiar estado (SAVEPOINT parcial)
 START TRANSACTION;
 UPDATE clientes SET estado_cliente = 'Inactivo' WHERE id_cliente = 35;
 SAVEPOINT estado_cambiado;
@@ -906,33 +909,33 @@ START TRANSACTION;
 INSERT INTO asignaciones_crm (id_cliente, id_vendedor, estado) VALUES (2, 15, 'Activa');
 ROLLBACK;
 
--- Transacción 10: HU-30 | POST /api/sales/update | Editar venta (ROLLBACK completo)
+-- Transacción 10: HU-30 | POST /api/sales/actualizar | Editar venta (ROLLBACK completo)
 START TRANSACTION;
 UPDATE ventas SET metodo_pago = 'Tarjeta de crédito' WHERE id_venta = 1 AND estado_venta = 'Pendiente';
 ROLLBACK;
 
 /* ================= SIMULACIÓN DE ERRORES ================= */
--- Error 1: HU-28 | POST /api/sales | Producto inexistente (ROLLBACK completo)
--- START TRANSACTION;
--- INSERT INTO ventas (id_cliente, id_vendedor, estado_venta, metodo_pago, total_venta) VALUES (5, 12, 'Pendiente', 'PSE', 0);
--- INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES ((SELECT MAX(id_venta) FROM ventas), 99999, 2, 100000, 200000);
--- ROLLBACK;
+-- Error 1: HU-28 | POST /api/sales | Producto inexistente (falla -> ROLLBACK)
+START TRANSACTION;
+INSERT INTO ventas (id_venta, id_cliente, id_vendedor, estado_venta, metodo_pago, total_venta) VALUES (32, 5, 12, 'Pendiente', 'PSE', 0);
+INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (32, 99999, 2, 100000, 200000);
+ROLLBACK;
 
--- Error 2: HU-28 | POST /api/sales | Cantidad inválida (SAVEPOINT parcial)
--- START TRANSACTION;
--- INSERT INTO ventas (id_cliente, id_vendedor, estado_venta, metodo_pago, total_venta) VALUES (5, 12, 'Pendiente', 'Transferencia', 0);
--- INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES ((SELECT MAX(id_venta) FROM ventas), 11, 4, 85000, 340000);
--- SAVEPOINT item_valido;
--- INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES ((SELECT MAX(id_venta) FROM ventas), 11, 0, 85000, 0);
--- ROLLBACK TO SAVEPOINT item_valido;
--- UPDATE ventas SET total_venta = (SELECT SUM(subtotal) FROM detalle_ventas WHERE id_venta = (SELECT MAX(id_venta) FROM ventas)) WHERE id_venta = (SELECT MAX(id_venta) FROM ventas);
--- COMMIT;
+-- Error 2: HU-28 | POST /api/sales | Cantidad inválida (falla -> ROLLBACK TO SAVEPOINT y COMMIT)
+START TRANSACTION;
+INSERT INTO ventas (id_venta, id_cliente, id_vendedor, estado_venta, metodo_pago, total_venta) VALUES (33, 5, 12, 'Pendiente', 'Transferencia', 0);
+INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (33, 11, 4, 85000, 340000);
+SAVEPOINT item_valido;
+INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (33, 11, 0, 85000, 0);
+ROLLBACK TO SAVEPOINT item_valido;
+UPDATE ventas SET total_venta = (SELECT SUM(subtotal) FROM detalle_ventas WHERE id_venta = 33) WHERE id_venta = 33;
+COMMIT;
 
--- Error 3: HU-05 | POST /api/clients | Correo duplicado (ROLLBACK completo)
--- START TRANSACTION;
--- INSERT INTO empresas (nombre_empresa, sector_industria, sitio_web) VALUES ('Empresa Prueba Rollback SAS', 'Tecnología', 'https://www.empresaprueba.co');
--- INSERT INTO clientes (id_empresa, nombre_completo, correo_electronico, telefono) VALUES ((SELECT MAX(id_empresa) FROM empresas), 'Cliente Duplicado Prueba', 'tatiana.ospina25@grupodigital.co', '+57 300 000 0000');
--- ROLLBACK;
+-- Error 3: HU-05 | POST /api/clients | Correo duplicado (falla -> ROLLBACK)
+START TRANSACTION;
+INSERT INTO empresas (id_empresa, nombre_empresa, sector_industria, sitio_web) VALUES (31, 'Empresa Prueba Rollback SAS', 'Tecnología', 'https://www.empresaprueba.co');
+INSERT INTO clientes (id_empresa, nombre_completo, correo_electronico, telefono) VALUES (31, 'Cliente Duplicado Prueba', 'tatiana.ospina25@grupodigital.co', '+57 300 000 0000');
+ROLLBACK;
 
 /* ================= VERIFICACIÓN ================= */
 SELECT 'empresas' AS tabla, COUNT(*) AS registros FROM empresas
