@@ -1,5 +1,8 @@
+/**
+ * Define las direcciones para consultar y gestionar reportes.
+ */
 import { Router } from 'express';
-import { campaigns, clients, interactions, sales } from '../../apicontroller/reportes.controller.js';
+import { campaigns, clients, interactions, sales } from '../../apicontroller/Reportes.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { allowRoles } from '../middleware/role.middleware.js';
 
@@ -18,4 +21,5 @@ router.get('/campaigns', campaigns);
 // Endpoint: GET /api/reports/interactions.
 router.get('/interactions', interactions);
 
+/** Pone las direcciones de esta área a disposición de la aplicación. */
 export default router;

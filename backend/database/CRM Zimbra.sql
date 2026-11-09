@@ -12,7 +12,7 @@ CREATE TABLE empresas (
 );
 
 /* Registra la información personal de los visitantes, su estado de
-   calificación y puntaje acumulado (Laudon & Laudon, 2012). */
+   calificación y puntaje acumulado. */
 CREATE TABLE clientes (
     id_cliente INT AUTO_INCREMENT PRIMARY KEY,
     id_empresa INT,
@@ -67,8 +67,14 @@ CREATE TABLE productos (
     tipo_licencia VARCHAR(50) NOT NULL,
     precio DECIMAL(10,2) NOT NULL,
     estado BOOLEAN DEFAULT TRUE,
+    fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_tipo_licencia CHECK (tipo_licencia IN ('Gratuita','Prueba 60 dias','Comercial')),
-    CONSTRAINT chk_precio CHECK (precio >= 0)
+    CONSTRAINT chk_precio CHECK (precio >= 0),
+    CONSTRAINT chk_precio_por_licencia CHECK (
+        (tipo_licencia IN ('Gratuita','Prueba 60 dias') AND precio = 0)
+        OR (tipo_licencia = 'Comercial' AND precio > 0)
+    ),
+    CONSTRAINT uq_producto_nombre_tipo UNIQUE (nombre_producto, tipo_licencia)
 );
 
 /* Registra las distintas iniciativas de marketing diseñadas para atraer
@@ -81,6 +87,7 @@ CREATE TABLE campanas_marketing (
     fecha_inicio DATE,
     fecha_fin DATE,
     estado VARCHAR(20) DEFAULT 'Activa',
+    CONSTRAINT chk_presupuesto_campana CHECK (presupuesto IS NULL OR presupuesto >= 0),
     CONSTRAINT chk_estado_campana CHECK (estado IN ('Activa','Inactiva')),
     CONSTRAINT chk_fechas_campana CHECK (fecha_fin >= fecha_inicio)
 );
@@ -92,7 +99,7 @@ CREATE TABLE acciones_marketing (
     nombre_accion VARCHAR(100) NOT NULL UNIQUE,
     puntaje INT NOT NULL,
     estado BOOLEAN DEFAULT TRUE,
-    CONSTRAINT chk_puntaje_positivo CHECK (puntaje >= 0)
+    CONSTRAINT chk_puntaje_positivo CHECK (puntaje BETWEEN 0 AND 100)
 );
 
 /* Registra cada interacción o evento que un cliente realiza dentro del
@@ -103,10 +110,28 @@ CREATE TABLE actividad_web (
     id_accion INT NOT NULL,
     id_campana INT,
     fecha_actividad DATETIME DEFAULT CURRENT_TIMESTAMP,
+    puntaje_otorgado INT NOT NULL DEFAULT 0,
+    direccion_origen VARCHAR(255),
     detalle VARCHAR(255),
     FOREIGN KEY (id_cliente) REFERENCES clientes(id_cliente),
     FOREIGN KEY (id_accion) REFERENCES acciones_marketing(id_accion),
     FOREIGN KEY (id_campana) REFERENCES campanas_marketing(id_campana)
+);
+
+/* Almacena la información general de cada contrato, método de pago y
+   el total consolidado (HU-28). */
+CREATE TABLE ventas (
+    id_venta INT AUTO_INCREMENT PRIMARY KEY,
+    numero_contrato VARCHAR(100) UNIQUE,
+    id_cliente INT NOT NULL,
+    id_vendedor INT NOT NULL,
+    fecha_venta DATETIME DEFAULT CURRENT_TIMESTAMP,
+    estado_venta VARCHAR(30) DEFAULT 'Pendiente',
+    metodo_pago VARCHAR(50),
+    total_venta DECIMAL(12,2) DEFAULT 0,
+    CONSTRAINT chk_estado_venta CHECK (estado_venta IN ('Pendiente','Completada','Cancelada')),
+    FOREIGN KEY (id_cliente) REFERENCES clientes(id_cliente),
+    FOREIGN KEY (id_vendedor) REFERENCES vendedores(id_vendedor)
 );
 
 /* Controla las descargas de las versiones de prueba y sus respectivas
@@ -115,12 +140,14 @@ CREATE TABLE descargas_prueba (
     id_descarga INT AUTO_INCREMENT PRIMARY KEY,
     id_cliente INT NOT NULL,
     id_producto INT NOT NULL,
+    id_venta INT NULL,
     fecha_inicio DATE DEFAULT (CURRENT_DATE),
     fecha_fin DATE NOT NULL,
     estado_prueba VARCHAR(30) DEFAULT 'Activa',
     CONSTRAINT chk_estado_prueba CHECK (estado_prueba IN ('Activa','Vencida','Cancelada','Convertida')),
     FOREIGN KEY (id_cliente) REFERENCES clientes(id_cliente),
-    FOREIGN KEY (id_producto) REFERENCES productos(id_producto)
+    FOREIGN KEY (id_producto) REFERENCES productos(id_producto),
+    CONSTRAINT fk_descargas_venta FOREIGN KEY (id_venta) REFERENCES ventas(id_venta)
 );
 
 /* Gestiona la asignación histórica y actual de los clientes a los
@@ -149,22 +176,6 @@ CREATE TABLE interacciones (
     CONSTRAINT chk_tipo_interaccion CHECK (tipo_interaccion IN
         ('Llamada','Correo','Meeting','Alerta Automática')),
     FOREIGN KEY (id_asignacion) REFERENCES asignaciones_crm(id_asignacion)
-);
-
-/* Almacena la información general de cada contrato, método de pago y
-   el total consolidado (HU-28). */
-CREATE TABLE ventas (
-    id_venta INT AUTO_INCREMENT PRIMARY KEY,
-    numero_contrato VARCHAR(100) UNIQUE,
-    id_cliente INT NOT NULL,
-    id_vendedor INT NOT NULL,
-    fecha_venta DATETIME DEFAULT CURRENT_TIMESTAMP,
-    estado_venta VARCHAR(30) DEFAULT 'Pendiente',
-    metodo_pago VARCHAR(50),
-    total_venta DECIMAL(12,2) DEFAULT 0,
-    CONSTRAINT chk_estado_venta CHECK (estado_venta IN ('Pendiente','Completada','Cancelada')),
-    FOREIGN KEY (id_cliente) REFERENCES clientes(id_cliente),
-    FOREIGN KEY (id_vendedor) REFERENCES vendedores(id_vendedor)
 );
 
 /* Detalla los productos específicos, cantidades, precios y subtotales
@@ -591,6 +602,11 @@ INSERT INTO actividad_web (id_actividad, id_cliente, id_accion, id_campana, fech
 (149,24,1,1,'2026-11-05 15:40:00','Visita a página de inicio (1 pts)'),
 (150,26,1,1,'2026-11-05 15:45:00','Visita a página de inicio (1 pts)');
 
+/* Conserva el puntaje que aporta cada actividad en el momento de su registro. */
+UPDATE actividad_web aw
+JOIN acciones_marketing am ON am.id_accion = aw.id_accion
+SET aw.puntaje_otorgado = am.puntaje;
+
 -- 2.9 descargas_prueba (30)
 INSERT INTO descargas_prueba (id_descarga, id_cliente, id_producto, fecha_inicio, fecha_fin, estado_prueba) VALUES
 (1,1,8,'2026-10-21','2026-12-20','Activa'),
@@ -722,6 +738,17 @@ INSERT INTO ventas (id_venta, numero_contrato, id_cliente, id_vendedor, fecha_ve
 (28,'CT-2026-0028',33,20,'2026-08-23 21:48:17','Cancelada','Transferencia',7055000),
 (29,'CT-2026-0029',14,11,'2026-11-01 09:16:32','Cancelada','Consignación',900000),
 (30,'CT-2026-0030',34,2,'2026-11-01 12:00:00','Cancelada','PSE',1200000);
+
+/* Asocia las pruebas convertidas con la venta completada de cada cliente. */
+UPDATE descargas_prueba d
+JOIN (
+    SELECT id_cliente, MAX(id_venta) AS id_venta
+    FROM ventas
+    WHERE estado_venta = 'Completada'
+    GROUP BY id_cliente
+) v ON v.id_cliente = d.id_cliente
+SET d.id_venta = v.id_venta
+WHERE d.estado_prueba = 'Convertida';
 
 -- 2.13 detalle_ventas (30)
 INSERT INTO detalle_ventas (id_detalle, id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES
@@ -899,7 +926,7 @@ ROLLBACK TO SAVEPOINT estado_cambiado;
 INSERT INTO auditoria_cambios (tabla, id_registro, campo, valor_anterior, valor_nuevo, usuario_bd) VALUES ('clientes', 35, 'estado_cliente', 'Frio', 'Inactivo', CURRENT_USER());
 COMMIT;
 
--- Transacción 8: HU-16 | POST /api/campaigns | Crear campaña (ROLLBACK completo)
+-- Transacción 8: HU-16 | POST /api/campanas_marketing | Crear campaña (ROLLBACK completo)
 START TRANSACTION;
 INSERT INTO campanas_marketing (nombre_campana, descripcion, presupuesto, fecha_inicio, fecha_fin, estado) VALUES ('Campaña Fechas Malas', 'Campaña de prueba con fechas incorrectas.', 10000000, '2026-12-31', '2026-01-01', 'Activa');
 ROLLBACK;

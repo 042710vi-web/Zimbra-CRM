@@ -1,12 +1,20 @@
+/**
+ * Consulta y guarda en la base de datos la información de clientes.
+ */
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
-import { Cliente } from '../entity/cliente.entity.js';
-import { Empresa } from '../entity/empresa.entity.js';
-import { registerChanges } from './auditoria.repository.js';
+import { Cliente } from '../entity/Clientes.entity.js';
+import { Empresa } from '../entity/Empresas.entity.js';
+import { Asignacion } from '../entity/AsignacionesCrm.entity.js';
+import { registerChanges } from './AuditoriaCambios.repository.js';
 
-// Busca o crea la empresa indicada por id o por nombre (se reutiliza al crear y al editar).
+// El sistema comprueba la empresa indicada o registra una nueva cuando se recibe su nombre.
 async function resolveCompanyId(data, transaction) {
   let companyId = data.id_empresa ? Number(data.id_empresa) : null;
+  if (companyId) {
+    const company = await Empresa.findByPk(companyId, { transaction });
+    if (!company) throw Object.assign(new Error('La empresa indicada no existe.'), { status: 404 });
+  }
   if (!companyId && data.nombre_empresa?.trim()) {
     const [company] = await Empresa.findOrCreate({
       where: { nombre_empresa: data.nombre_empresa.trim() },
@@ -21,6 +29,7 @@ async function resolveCompanyId(data, transaction) {
   return companyId;
 }
 
+/** Realiza la consulta o el cambio de información solicitado. */
 export async function createClient(data) {
   return sequelize.transaction(async (transaction) => {
     const companyId = await resolveCompanyId(data, transaction);
@@ -77,13 +86,30 @@ export async function updateClient(data, usuario) {
   });
 }
 
-// HU-08: cambia el estado del cliente (por ejemplo a Inactivo) y lo audita.
+// HU-08: el sistema actualiza el estado y finaliza la asignación si el cliente queda Inactivo.
 export async function updateClientStatus({ id_cliente, estado_cliente }, usuario) {
   return sequelize.transaction(async (transaction) => {
     const client = await Cliente.findByPk(id_cliente, { transaction, lock: transaction.LOCK.UPDATE });
     if (!client) throw Object.assign(new Error('El cliente indicado no existe.'), { status: 404 });
     const previous = client.estado_cliente;
     await client.update({ estado_cliente }, { transaction });
+    if (estado_cliente === 'Inactivo') {
+      const activeAssignment = await Asignacion.findOne({
+        where: { id_cliente, estado: 'Activa' }, transaction, lock: transaction.LOCK.UPDATE,
+      });
+      if (activeAssignment) {
+        const previousAssignment = activeAssignment.get({ plain: true });
+        const fecha_fin = new Date();
+        await activeAssignment.update({ estado: 'Finalizada', fecha_fin }, { transaction });
+        await registerChanges({
+          tabla: 'asignaciones_crm', idRegistro: activeAssignment.id_asignacion, usuario, transaction,
+          cambios: {
+            estado: [previousAssignment.estado, 'Finalizada'],
+            fecha_fin: [previousAssignment.fecha_fin, fecha_fin],
+          },
+        });
+      }
+    }
     await registerChanges({
       tabla: 'clientes',
       idRegistro: id_cliente,

@@ -1,5 +1,8 @@
+/**
+ * Define las direcciones para consultar y gestionar auth.
+ */
 import { Router } from 'express';
-import { login, logout, requestReset, resetPassword } from '../../apicontroller/auth.controller.js';
+import { login, logout, requestReset, resetPassword } from '../../apicontroller/Auth.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 const router = Router();
 // HU-01: iniciar sesión.
@@ -14,4 +17,5 @@ router.post('/recuperar', requestReset);
 // HU-01: restablecer la contraseña con el token recibido (público).
 // Endpoint: POST /api/auth/restablecer.
 router.post('/restablecer', resetPassword);
+/** Pone las direcciones de esta área a disposición de la aplicación. */
 export default router;

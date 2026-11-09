@@ -1,4 +1,7 @@
-import { createClient, findClients, updateClient as saveClient, updateClientStatus } from '../repository/clientes.repository.js';
+/**
+ * Valida los datos y coordina las operaciones necesarias para gestionar clientes.
+ */
+import { createClient, findClients, updateClient as saveClient, updateClientStatus } from '../repository/Clientes.repository.js';
 import {
   CLIENT_STATES, optionalId, optionalPhone, optionalText, optionalUrl, pagination,
   requireEmail, requireId, requireOneOf, requireText,
@@ -18,18 +21,21 @@ function cleanClientData(data) {
 }
 
 // HU-05
+/** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function registerClient(data = {}) {
   const id = await createClient(cleanClientData(data));
   return { id_cliente: id, message: 'Cliente registrado correctamente.' };
 }
 
 // HU-06
+/** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function listClients(query = {}) {
   const estado = query.estado ? requireOneOf(query.estado, 'El estado', CLIENT_STATES) : null;
   return findClients({ q: String(query.q || '').trim(), estado, ...pagination(query) });
 }
 
 // HU-07
+/** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function updateClient(data = {}, user) {
   const id_cliente = requireId(data.id_cliente, 'El cliente');
   await saveClient({ ...cleanClientData(data), id_cliente }, user?.email);
@@ -37,6 +43,7 @@ export async function updateClient(data = {}, user) {
 }
 
 // HU-08
+/** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function changeClientStatus(data = {}, user) {
   const id_cliente = requireId(data.id_cliente, 'El cliente');
   const estado_cliente = requireOneOf(data.estado_cliente, 'El estado', CLIENT_STATES);

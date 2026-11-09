@@ -1,17 +1,17 @@
+/**
+ * Valida los datos y coordina las operaciones necesarias para gestionar auth.
+ */
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 
-import {
-  consumeRecoveryToken,
-  createRecoveryToken,
-  findUserByEmail,
-} from '../repository/auth.repository.js';
+import { findUserByEmail } from '../repository/Usuarios.repository.js';
+import { consumeRecoveryToken, createRecoveryToken } from '../repository/RecuperacionClaves.repository.js';
 
 import { env } from '../config/env.js';
 import {
   canSendEmail,
   sendPasswordRecoveryEmail,
-} from '../service/email.service.js';
+} from '../service/Email.service.js';
 
 import { hashPassword } from '../utils/hash.js';
 import { signToken } from '../utils/jwt.js';
@@ -24,6 +24,7 @@ import {
 
 const RECOVERY_MINUTES = 30;
 
+/** Apoya la gestión de auth mediante una tarea interna del sistema. */
 const sha256 = (value) =>
   crypto.createHash('sha256').update(value).digest('hex');
 

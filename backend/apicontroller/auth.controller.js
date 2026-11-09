@@ -1,4 +1,7 @@
-import * as auth from '../service/auth.service.js';
+/**
+ * Recibe las solicitudes de auth, las entrega al servicio correspondiente y comunica el resultado.
+ */
+import * as auth from '../service/Auth.service.js';
 // HU-01: iniciar sesión.
 export async function login(req, res, next) {
   try { res.json(await auth.login(req.body)); } catch (error) { next(error); }

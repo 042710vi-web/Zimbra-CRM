@@ -1,4 +1,7 @@
-import { changeSaleState, editSale, getSales, registerSale } from '../service/ventas.service.js';
+/**
+ * Recibe las solicitudes de ventas, las entrega al servicio correspondiente y comunica el resultado.
+ */
+import { changeSaleState, editSale, getSales, registerSale } from '../service/Ventas.service.js';
 // HU-29: lista ventas con filtros, paginación y detalle.
 export async function list(req, res, next) { try { res.json(await getSales(req.query, req.user)); } catch (error) { next(error); } }
 // HU-28: crea la venta y su detalle en una transacción.

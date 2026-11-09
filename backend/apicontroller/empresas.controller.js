@@ -1,4 +1,7 @@
-import * as companies from '../service/empresas.service.js';
+/**
+ * Recibe las solicitudes de empresas, las entrega al servicio correspondiente y comunica el resultado.
+ */
+import * as companies from '../service/Empresas.service.js';
 
 // HU-09: listar empresas para selectores y búsqueda.
 export async function list(req, res, next) {

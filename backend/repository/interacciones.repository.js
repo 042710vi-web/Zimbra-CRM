@@ -1,8 +1,12 @@
+/**
+ * Consulta y guarda en la base de datos la información de interacciones.
+ */
 import { Op } from 'sequelize';
 import { sequelize } from '../config/database.js';
-import { Asignacion } from '../entity/asignacion.entity.js';
-import { Interaccion } from '../entity/interaccion.entity.js';
+import { Asignacion } from '../entity/AsignacionesCrm.entity.js';
+import { Interaccion } from '../entity/Interacciones.entity.js';
 
+/** Realiza la consulta o el cambio de información solicitado. */
 export async function listInteractions({ id_vendedor, id_asignacion, tipo_interaccion, page, limit }) {
   const where = {};
   if (id_asignacion) where.id_asignacion = id_asignacion;
@@ -14,6 +18,7 @@ export async function listInteractions({ id_vendedor, id_asignacion, tipo_intera
   });
 }
 
+/** Realiza la consulta o el cambio de información solicitado. */
 export async function createInteraction({ id_asignacion, tipo_interaccion, resultado, notas, id_vendedor }) {
   return sequelize.transaction(async (transaction) => {
     const assignment = await Asignacion.findOne({ where: { id_asignacion, estado: 'Activa' }, transaction, lock: transaction.LOCK.UPDATE });

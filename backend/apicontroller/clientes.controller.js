@@ -1,4 +1,7 @@
-import * as clients from '../service/clientes.service.js';
+/**
+ * Recibe las solicitudes de clientes, las entrega al servicio correspondiente y comunica el resultado.
+ */
+import * as clients from '../service/Clientes.service.js';
 
 // HU-05: registrar un nuevo cliente.
 export async function create(req, res, next) {

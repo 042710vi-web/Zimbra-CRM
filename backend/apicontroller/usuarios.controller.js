@@ -1,4 +1,7 @@
-import * as users from '../service/usuarios.service.js';
+/**
+ * Recibe las solicitudes de usuarios, las entrega al servicio correspondiente y comunica el resultado.
+ */
+import * as users from '../service/Usuarios.service.js';
 
 // HU-04: listar usuarios del sistema.
 export async function list(req, res, next) {

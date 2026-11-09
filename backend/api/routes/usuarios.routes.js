@@ -1,5 +1,8 @@
+/**
+ * Define las direcciones para consultar y gestionar usuarios.
+ */
 import { Router } from 'express';
-import { changeStatus, create, list } from '../../apicontroller/usuarios.controller.js';
+import { changeStatus, create, list } from '../../apicontroller/Usuarios.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { allowRoles } from '../middleware/role.middleware.js';
 const router = Router();
@@ -11,4 +14,5 @@ router.get('/', list);
 router.post('/', create);
 // Endpoint: POST /api/users/cambiar-estado.
 router.post('/cambiar-estado', changeStatus);
+/** Pone las direcciones de esta área a disposición de la aplicación. */
 export default router;

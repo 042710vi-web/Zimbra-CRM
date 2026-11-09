@@ -1,6 +1,6 @@
-// HU-36: traduce errores de validación y restricciones a respuestas entendibles.
+// HU-36: Traduce errores de validación y restricciones a respuestas entendibles.
 export function errorHandler(error, _req, res, _next) {
-  if (error.name === 'SequelizeUniqueConstraintError' || error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'El correo o dato único ya está registrado.' });
+  if (error.name === 'SequelizeUniqueConstraintError' || error.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'Uno de los datos únicos ya está registrado.' });
   if (error.name === 'SequelizeForeignKeyConstraintError' || error.code === 'ER_NO_REFERENCED_ROW_2') return res.status(400).json({ message: 'La referencia indicada no existe.' });
   if (error.name === 'SequelizeValidationError') return res.status(400).json({ message: 'Los datos enviados no son válidos.' });
   const dbCode = error.parent?.code || error.original?.code || error.code;

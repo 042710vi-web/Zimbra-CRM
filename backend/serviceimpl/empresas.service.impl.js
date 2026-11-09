@@ -1,4 +1,7 @@
-import { createCompany, findCompanies } from '../repository/empresas.repository.js';
+/**
+ * Valida los datos y coordina las operaciones necesarias para gestionar empresas.
+ */
+import { createCompany, findCompanies } from '../repository/Empresas.repository.js';
 import { optionalText, optionalUrl, requireText } from '../utils/validators.js';
 
 // HU-09: listado para selectores y búsqueda.

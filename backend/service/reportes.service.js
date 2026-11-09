@@ -1,6 +1,9 @@
+/**
+ * Presenta las operaciones que otras partes del sistema pueden utilizar para gestionar reportes.
+ */
 export {
   campaignsReport,
   clientsReport,
   interactionsReport,
   salesReport,
-} from '../serviceimpl/reportes.service.impl.js';
+} from '../serviceimpl/Reportes.service.impl.js';

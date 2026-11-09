@@ -1,11 +1,16 @@
+/**
+ * Consulta y guarda en la base de datos la información de reportes.
+ */
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
 
+/** Apoya la gestión de reportes mediante una tarea interna del sistema. */
 function addDateRange(where, replacements, fromColumn, toColumn, desde, hasta) {
   if (desde) { where.push(`${fromColumn} >= :desde`); replacements.desde = desde; }
   if (hasta) { where.push(`${toColumn} < DATE_ADD(:hasta, INTERVAL 1 DAY)`); replacements.hasta = hasta; }
 }
 
+/** Realiza la consulta o el cambio de información solicitado. */
 export async function getSalesReport(filters) {
   const where = ['1 = 1'];
   const replacements = {};
@@ -44,6 +49,7 @@ export async function getSalesReport(filters) {
   return { resumen: summary, por_vendedor: porVendedor };
 }
 
+/** Realiza la consulta o el cambio de información solicitado. */
 export async function getClientsReport({ desde, hasta }) {
   const where = ['1 = 1'];
   const replacements = {};
@@ -64,6 +70,7 @@ export async function getClientsReport({ desde, hasta }) {
   return { total_clientes: Number(summary.total_clientes), por_estado: rows };
 }
 
+/** Realiza la consulta o el cambio de información solicitado. */
 export async function getCampaignsReport({ desde, hasta }) {
   const where = ['1 = 1'];
   const replacements = {};
@@ -90,6 +97,7 @@ export async function getCampaignsReport({ desde, hasta }) {
   return { campañas: rows };
 }
 
+/** Realiza la consulta o el cambio de información solicitado. */
 export async function getInteractionsReport({ desde, hasta, id_vendedor, umbral_dias, page, limit }) {
   const replacements = { desde, hasta, umbral: umbral_dias, limit, offset: (page - 1) * limit };
   const vendorClause = id_vendedor ? 'AND a.id_vendedor = :idVendedor' : '';

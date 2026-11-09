@@ -1,21 +1,28 @@
+/**
+ * Valida los datos y coordina las operaciones necesarias para gestionar reportes.
+ */
 import {
   getCampaignsReport as campaignsRepository,
   getClientsReport as clientsRepository,
   getInteractionsReport as interactionsRepository,
   getSalesReport as salesRepository,
-} from '../repository/reportes.repository.js';
+} from '../repository/Reportes.repository.js';
 
+/** Apoya la gestión de reportes mediante una tarea interna del sistema. */
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+/** Apoya la gestión de reportes mediante una tarea interna del sistema. */
 const positiveInt = (value, field) => {
   const number = Number(value);
   if (!Number.isInteger(number) || number < 1) throw fail(`${field} debe ser un entero positivo.`);
   return number;
 };
+/** Apoya la gestión de reportes mediante una tarea interna del sistema. */
 function validDate(value, field) {
   if (!value) return undefined;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) throw fail(`${field} debe tener formato YYYY-MM-DD.`);
   return value;
 }
+/** Apoya la gestión de reportes mediante una tarea interna del sistema. */
 function defaultPeriod(query = {}) {
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
@@ -25,10 +32,12 @@ function defaultPeriod(query = {}) {
   if (desde > hasta) throw fail('desde no puede ser posterior a hasta.');
   return { desde, hasta };
 }
+/** Apoya la gestión de reportes mediante una tarea interna del sistema. */
 function ensureAdmin(user) {
   if (user?.role !== 'Administrador') throw fail('Solo un Administrador puede consultar reportes.', 403);
 }
 
+/** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function salesReport(query = {}, user) {
   ensureAdmin(user);
   const period = defaultPeriod(query);
@@ -44,18 +53,21 @@ export async function salesReport(query = {}, user) {
   return { filtros: filters, ...result };
 }
 
+/** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function clientsReport(query = {}, user) {
   ensureAdmin(user);
   const period = defaultPeriod(query);
   return { filtros: period, ...(await clientsRepository(period)) };
 }
 
+/** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function campaignsReport(query = {}, user) {
   ensureAdmin(user);
   const period = defaultPeriod(query);
   return { filtros: period, ...(await campaignsRepository(period)) };
 }
 
+/** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function interactionsReport(query = {}, user) {
   ensureAdmin(user);
   const period = defaultPeriod(query);

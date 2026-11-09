@@ -1,3 +1,6 @@
+/**
+ * Presenta las operaciones que otras partes del sistema pueden utilizar para gestionar email.
+ */
 import nodemailer from 'nodemailer';
 import { env } from '../config/env.js';
 
@@ -21,8 +24,10 @@ const transporter = smtpConfigured
     })
   : null;
 
+/** Pone esta operación a disposición de las demás partes del sistema. */
 export const canSendEmail = () => Boolean(transporter);
 
+/** Pone esta operación a disposición de las demás partes del sistema. */
 export async function sendPasswordRecoveryEmail({
   to,
   resetUrl,

@@ -1,8 +1,17 @@
+/**
+ * Consulta y guarda en la base de datos la información de usuarios.
+ */
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
-import { Usuario } from '../entity/usuario.entity.js';
-import { Vendedor } from '../entity/vendedor.entity.js';
-import { registerChanges } from './auditoria.repository.js';
+import { Usuario } from '../entity/Usuarios.entity.js';
+import { Vendedor } from '../entity/Vendedores.entity.js';
+import { registerChanges } from './AuditoriaCambios.repository.js';
+
+// Localiza la cuenta que corresponde al correo usado durante el inicio de sesión.
+export const findUserByEmail = (email) => Usuario.findOne({
+  where: { correo_acceso: email },
+  attributes: ['id_usuario', 'id_vendedor', 'correo_acceso', 'password_hash', 'rol', 'estado'],
+});
 
 // HU-04: lista usuarios sin exponer nunca password_hash.
 export const findUsers = ({ q, rol, estado }) => sequelize.query(
@@ -15,8 +24,10 @@ export const findUsers = ({ q, rol, estado }) => sequelize.query(
   { replacements: { q: q || null, like: `%${q || ''}%`, rol: rol || null, estado }, type: QueryTypes.SELECT },
 );
 
+/** Realiza la consulta o el cambio de información solicitado. */
 export const findActiveVendor = (id_vendedor) => Vendedor.findOne({ where: { id_vendedor, estado: true } });
 
+/** Realiza la consulta o el cambio de información solicitado. */
 export async function createUser(data, usuario) {
   return sequelize.transaction(async (transaction) => {
     const user = await Usuario.create({ ...data, estado: true }, { transaction });

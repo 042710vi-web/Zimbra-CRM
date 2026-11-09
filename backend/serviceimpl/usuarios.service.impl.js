@@ -1,9 +1,13 @@
-import { createUser, findActiveVendor, findUsers, updateUserStatus } from '../repository/usuarios.repository.js';
+/**
+ * Valida los datos y coordina las operaciones necesarias para gestionar usuarios.
+ */
+import { createUser, findActiveVendor, findUsers, updateUserStatus } from '../repository/Usuarios.repository.js';
 import { hashPassword } from '../utils/hash.js';
 import {
   USER_ROLES, httpError, requireEmail, requireId, requireOneOf, requirePassword,
 } from '../utils/validators.js';
 
+/** Apoya la gestión de usuarios mediante una tarea interna del sistema. */
 function toBoolean(value, label) {
   if (value === true || value === 1 || value === '1' || value === 'true') return true;
   if (value === false || value === 0 || value === '0' || value === 'false') return false;

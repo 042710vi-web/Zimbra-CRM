@@ -1,12 +1,19 @@
-import { changeSaleStatus as setSaleStatus, createSale, listSales, updateSale } from '../repository/ventas.repository.js';
+/**
+ * Valida los datos y coordina las operaciones necesarias para gestionar ventas.
+ */
+import { changeSaleStatus as setSaleStatus, createSale, listSales, updateSale } from '../repository/Ventas.repository.js';
+/** Apoya la gestión de ventas mediante una tarea interna del sistema. */
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+/** Apoya la gestión de ventas mediante una tarea interna del sistema. */
 const id = (value, key) => { const n = Number(value); if (!Number.isInteger(n) || n < 1) throw fail(`${key} debe ser entero positivo.`); return n; };
+/** Apoya la gestión de ventas mediante una tarea interna del sistema. */
 function normalizeItems(items) {
   if (!Array.isArray(items) || !items.length) throw fail('Incluye al menos un producto en items.');
   const result = items.map(item => ({ id_producto: id(item.id_producto, 'id_producto'), cantidad: id(item.cantidad, 'cantidad') }));
   if (new Set(result.map(x => x.id_producto)).size !== result.length) throw fail('No repitas productos; envía una sola línea por producto.');
   return result;
 }
+/** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function getSales(query = {}, user = {}) {
   const page = Math.max(1, Number.parseInt(query.page, 10) || 1), limit = Math.min(100, Math.max(1, Number.parseInt(query.limit, 10) || 20));
   const filters = {};
@@ -20,15 +27,18 @@ export async function getSales(query = {}, user = {}) {
   const result = await listSales({ filters, page, limit, id_vendedor });
   return { data: result.rows, pagination: { page, limit, total: result.count, pages: Math.ceil(result.count / limit) } };
 }
+/** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function registerSale(data = {}) {
   if (typeof data.numero_contrato !== 'string' || !data.numero_contrato.trim()) throw fail('numero_contrato es obligatorio.');
   if (typeof data.metodo_pago !== 'string' || !data.metodo_pago.trim()) throw fail('metodo_pago es obligatorio.');
   return createSale({ id_cliente: id(data.id_cliente, 'id_cliente'), id_vendedor: id(data.id_vendedor, 'id_vendedor'), numero_contrato: data.numero_contrato.trim(), metodo_pago: data.metodo_pago.trim(), items: normalizeItems(data.items) });
 }
+/** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function editSale(data = {}, user = {}) {
   if (!data.id_venta) throw fail('id_venta es obligatorio.');
   return updateSale({ id_venta: id(data.id_venta, 'id_venta'), metodo_pago: data.metodo_pago, items: normalizeItems(data.items), ownerId: user.role === 'Vendedor' ? id(user.vendorId, 'vendedor') : undefined });
 }
+/** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function changeSaleState(data = {}) {
   const estado_venta = data.estado_venta;
   if (!['Completada', 'Cancelada'].includes(estado_venta)) throw fail('estado_venta debe ser Completada o Cancelada.');
