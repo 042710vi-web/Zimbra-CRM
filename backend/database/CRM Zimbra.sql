@@ -950,3 +950,369 @@ UNION ALL SELECT 'interacciones', COUNT(*) FROM interacciones
 UNION ALL SELECT 'ventas', COUNT(*) FROM ventas
 UNION ALL SELECT 'detalle_ventas', COUNT(*) FROM detalle_ventas
 UNION ALL SELECT 'auditoria_cambios', COUNT(*) FROM auditoria_cambios;
+/* =====================================================================
+   3. EXTENSIONES SQL DE LAS HISTORIAS ASIGNADAS A VIVIANA
+   HU-03 a HU-06, HU-23, HU-24, HU-32 y restricciones de HU-33.
+   Se conservan las tablas y datos ya definidos arriba; solo se agregan
+   el estado de sincronización, su bitácora, triggers y procedimientos.
+   ===================================================================== */
+
+/* HU-23/HU-24: estado resumido Salesforce en el cliente. */
+ALTER TABLE clientes
+    ADD COLUMN estado_salesforce ENUM('No requerido','Pendiente','Sincronizado','Fallido')
+        NOT NULL DEFAULT 'No requerido';
+
+/* HU-23/HU-24: una fila por sincronización lógica; intentos cuenta las
+   llamadas hechas (máximo inicial + 3 reintentos = 4). */
+CREATE TABLE salesforce_sincronizaciones (
+    id_sincronizacion BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id_cliente INT NOT NULL,
+    objeto_salesforce VARCHAR(30) NOT NULL,
+    operacion ENUM('Crear','Actualizar','Upsert') NOT NULL DEFAULT 'Upsert',
+    estado ENUM('Pendiente','Sincronizado','Fallido') NOT NULL DEFAULT 'Pendiente',
+    intentos TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    salesforce_id VARCHAR(30) NULL,
+    respuesta_salesforce JSON NULL,
+    mensaje_error TEXT NULL,
+    fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_actualizacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT chk_sf_objeto CHECK (objeto_salesforce IN ('Lead','Contact')),
+    CONSTRAINT chk_sf_intentos CHECK (intentos <= 4),
+    CONSTRAINT fk_sf_cliente FOREIGN KEY (id_cliente)
+        REFERENCES clientes(id_cliente)
+        ON UPDATE RESTRICT ON DELETE RESTRICT,
+    INDEX idx_sf_estado_fecha (estado, fecha_creacion),
+    INDEX idx_sf_cliente_fecha (id_cliente, fecha_creacion)
+);
+
+/* HU-32: siete triggers concentran las trazas de las historias asignadas.
+   Las inserciones de auditoría son transaccionales con el cambio original. */
+DELIMITER $$
+
+/* 1. Clientes: marca Salesforce pendiente y audita cambios de cliente. */
+CREATE TRIGGER trg_clientes_bu_auditoria
+BEFORE UPDATE ON clientes
+FOR EACH ROW
+BEGIN
+    IF NOT (OLD.estado_cliente <=> NEW.estado_cliente)
+       AND NEW.estado_cliente IN ('Calificado','Cliente','Convertido') THEN
+        SET NEW.estado_salesforce = 'Pendiente';
+    END IF;
+    IF NOT (OLD.estado_cliente <=> NEW.estado_cliente) THEN
+        INSERT INTO auditoria_cambios
+            (tabla,id_registro,campo,valor_anterior,valor_nuevo,usuario_bd,fecha_cambio)
+        VALUES ('clientes',OLD.id_cliente,'estado_cliente',OLD.estado_cliente,NEW.estado_cliente,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.puntaje_total <=> NEW.puntaje_total) THEN
+        INSERT INTO auditoria_cambios
+            (tabla,id_registro,campo,valor_anterior,valor_nuevo,usuario_bd,fecha_cambio)
+        VALUES ('clientes',OLD.id_cliente,'puntaje_total',OLD.puntaje_total,NEW.puntaje_total,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.nombre_completo <=> NEW.nombre_completo) THEN
+        INSERT INTO auditoria_cambios
+            (tabla,id_registro,campo,valor_anterior,valor_nuevo,usuario_bd,fecha_cambio)
+        VALUES ('clientes',OLD.id_cliente,'nombre_completo',OLD.nombre_completo,NEW.nombre_completo,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.correo_electronico <=> NEW.correo_electronico) THEN
+        INSERT INTO auditoria_cambios
+            (tabla,id_registro,campo,valor_anterior,valor_nuevo,usuario_bd,fecha_cambio)
+        VALUES ('clientes',OLD.id_cliente,'correo_electronico',OLD.correo_electronico,NEW.correo_electronico,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.telefono <=> NEW.telefono) THEN
+        INSERT INTO auditoria_cambios
+            (tabla,id_registro,campo,valor_anterior,valor_nuevo,usuario_bd,fecha_cambio)
+        VALUES ('clientes',OLD.id_cliente,'telefono',OLD.telefono,NEW.telefono,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.id_empresa <=> NEW.id_empresa) THEN
+        INSERT INTO auditoria_cambios
+            (tabla,id_registro,campo,valor_anterior,valor_nuevo,usuario_bd,fecha_cambio)
+        VALUES ('clientes',OLD.id_cliente,'id_empresa',OLD.id_empresa,NEW.id_empresa,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.estado_salesforce <=> NEW.estado_salesforce) THEN
+        INSERT INTO auditoria_cambios
+            (tabla,id_registro,campo,valor_anterior,valor_nuevo,usuario_bd,fecha_cambio)
+        VALUES ('clientes',OLD.id_cliente,'estado_salesforce',OLD.estado_salesforce,NEW.estado_salesforce,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+END$$
+
+/* 2. Ventas: conserva cambios de estado y valores comerciales. */
+CREATE TRIGGER trg_ventas_au_auditoria
+AFTER UPDATE ON ventas
+FOR EACH ROW
+BEGIN
+    IF NOT (OLD.estado_venta <=> NEW.estado_venta) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'ventas',NEW.id_venta,'estado_venta',OLD.estado_venta,NEW.estado_venta,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.total_venta <=> NEW.total_venta) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'ventas',NEW.id_venta,'total_venta',OLD.total_venta,NEW.total_venta,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.metodo_pago <=> NEW.metodo_pago) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'ventas',NEW.id_venta,'metodo_pago',OLD.metodo_pago,NEW.metodo_pago,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+END$$
+
+/* 3. Asignaciones: registra reasignación, finalización y vendedor. */
+CREATE TRIGGER trg_asignaciones_au_auditoria
+AFTER UPDATE ON asignaciones_crm
+FOR EACH ROW
+BEGIN
+    IF NOT (OLD.estado <=> NEW.estado) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'asignaciones_crm',NEW.id_asignacion,'estado',OLD.estado,NEW.estado,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.id_vendedor <=> NEW.id_vendedor) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'asignaciones_crm',NEW.id_asignacion,'id_vendedor',OLD.id_vendedor,NEW.id_vendedor,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.fecha_fin <=> NEW.fecha_fin) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'asignaciones_crm',NEW.id_asignacion,'fecha_fin',OLD.fecha_fin,NEW.fecha_fin,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+END$$
+
+/* 4. Interacciones: deja rastro de correcciones a seguimientos. */
+CREATE TRIGGER trg_interacciones_au_auditoria
+AFTER UPDATE ON interacciones
+FOR EACH ROW
+BEGIN
+    IF NOT (OLD.resultado <=> NEW.resultado) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'interacciones',NEW.id_interaccion,'resultado',OLD.resultado,NEW.resultado,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.notas <=> NEW.notas) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'interacciones',NEW.id_interaccion,'notas',OLD.notas,NEW.notas,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+END$$
+
+/* 5. Pruebas: audita cambios de estado y fecha de vencimiento. */
+CREATE TRIGGER trg_descargas_au_auditoria
+AFTER UPDATE ON descargas_prueba
+FOR EACH ROW
+BEGIN
+    IF NOT (OLD.estado_prueba <=> NEW.estado_prueba) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'descargas_prueba',NEW.id_descarga,'estado_prueba',OLD.estado_prueba,NEW.estado_prueba,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.fecha_fin <=> NEW.fecha_fin) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'descargas_prueba',NEW.id_descarga,'fecha_fin',OLD.fecha_fin,NEW.fecha_fin,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+END$$
+
+/* 6. Productos: audita activación y cambios de precio. */
+CREATE TRIGGER trg_productos_au_auditoria
+AFTER UPDATE ON productos
+FOR EACH ROW
+BEGIN
+    IF NOT (OLD.estado <=> NEW.estado) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'productos',NEW.id_producto,'estado',OLD.estado,NEW.estado,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.precio <=> NEW.precio) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'productos',NEW.id_producto,'precio',OLD.precio,NEW.precio,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+END$$
+
+/* 7. Salesforce: al cambiar el resultado actualiza el cliente y audita. */
+CREATE TRIGGER trg_salesforce_au_estado_auditoria
+AFTER UPDATE ON salesforce_sincronizaciones
+FOR EACH ROW
+BEGIN
+    IF NOT (OLD.estado <=> NEW.estado) THEN
+        UPDATE clientes
+           SET estado_salesforce = CASE NEW.estado
+               WHEN 'Sincronizado' THEN 'Sincronizado'
+               WHEN 'Fallido' THEN 'Fallido'
+               ELSE 'Pendiente'
+           END
+         WHERE id_cliente = NEW.id_cliente;
+        INSERT INTO auditoria_cambios VALUES
+        (NULL,'salesforce_sincronizaciones',NEW.id_sincronizacion,'estado',OLD.estado,NEW.estado,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.intentos <=> NEW.intentos) THEN
+        INSERT INTO auditoria_cambios VALUES
+        (NULL,'salesforce_sincronizaciones',NEW.id_sincronizacion,'intentos',OLD.intentos,NEW.intentos,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.operacion <=> NEW.operacion) THEN
+        INSERT INTO auditoria_cambios VALUES
+        (NULL,'salesforce_sincronizaciones',NEW.id_sincronizacion,'operacion',OLD.operacion,NEW.operacion,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.salesforce_id <=> NEW.salesforce_id) THEN
+        INSERT INTO auditoria_cambios VALUES
+        (NULL,'salesforce_sincronizaciones',NEW.id_sincronizacion,'salesforce_id',OLD.salesforce_id,NEW.salesforce_id,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.mensaje_error <=> NEW.mensaje_error) THEN
+        INSERT INTO auditoria_cambios VALUES
+        (NULL,'salesforce_sincronizaciones',NEW.id_sincronizacion,'mensaje_error',OLD.mensaje_error,NEW.mensaje_error,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+END$$
+
+/* Procedimientos almacenados (8):
+   clientes, empresas, auditoría e historial de sincronizaciones. */
+CREATE PROCEDURE sp_registrar_cliente(
+    IN p_id_empresa INT,
+    IN p_nombre VARCHAR(150),
+    IN p_correo VARCHAR(100),
+    IN p_telefono VARCHAR(50)
+)
+BEGIN
+    IF p_nombre IS NULL OR TRIM(p_nombre)='' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El nombre del cliente es obligatorio.';
+    END IF;
+    IF p_correo IS NULL OR TRIM(p_correo)='' OR p_correo NOT REGEXP '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El correo electrónico no es válido.';
+    END IF;
+    INSERT INTO clientes(id_empresa,nombre_completo,correo_electronico,telefono,puntaje_total,estado_cliente)
+    VALUES(p_id_empresa,TRIM(p_nombre),LOWER(TRIM(p_correo)),NULLIF(TRIM(p_telefono),''),0,'Frio');
+    SELECT LAST_INSERT_ID() AS id_cliente;
+END$$
+
+CREATE PROCEDURE sp_listar_clientes(
+    IN p_busqueda VARCHAR(150),
+    IN p_estado VARCHAR(50),
+    IN p_limite INT,
+    IN p_desplazamiento INT
+)
+BEGIN
+    DECLARE v_limite INT DEFAULT 50;
+    DECLARE v_desplazamiento INT DEFAULT 0;
+    SET v_limite=LEAST(GREATEST(COALESCE(p_limite,50),1),200);
+    SET v_desplazamiento=GREATEST(COALESCE(p_desplazamiento,0),0);
+    SELECT c.id_cliente,c.nombre_completo,c.correo_electronico,c.telefono,
+           c.estado_cliente,c.puntaje_total,c.fecha_registro,e.nombre_empresa
+    FROM clientes c
+    LEFT JOIN empresas e ON e.id_empresa=c.id_empresa
+    WHERE (p_busqueda IS NULL OR p_busqueda='' OR
+           c.nombre_completo LIKE CONCAT('%',p_busqueda,'%') OR
+           c.correo_electronico LIKE CONCAT('%',p_busqueda,'%'))
+      AND (p_estado IS NULL OR p_estado='' OR c.estado_cliente=p_estado)
+    ORDER BY c.fecha_registro DESC,c.id_cliente DESC
+    LIMIT v_desplazamiento,v_limite;
+END$$
+
+CREATE PROCEDURE sp_actualizar_cliente(
+    IN p_id_cliente INT,
+    IN p_id_empresa INT,
+    IN p_nombre VARCHAR(150),
+    IN p_correo VARCHAR(100),
+    IN p_telefono VARCHAR(50)
+)
+BEGIN
+    IF p_nombre IS NULL OR TRIM(p_nombre)='' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El nombre del cliente es obligatorio.';
+    END IF;
+    IF p_correo IS NULL OR TRIM(p_correo)='' OR p_correo NOT REGEXP '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El correo electrónico no es válido.';
+    END IF;
+    UPDATE clientes
+       SET id_empresa=p_id_empresa,
+           nombre_completo=TRIM(p_nombre),
+           correo_electronico=LOWER(TRIM(p_correo)),
+           telefono=NULLIF(TRIM(p_telefono),'')
+     WHERE id_cliente=p_id_cliente;
+    IF ROW_COUNT()=0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El cliente no existe o no hubo cambios.';
+    END IF;
+    SELECT p_id_cliente AS id_cliente;
+END$$
+
+CREATE PROCEDURE sp_cambiar_estado_cliente(
+    IN p_id_cliente INT,
+    IN p_estado VARCHAR(50)
+)
+BEGIN
+    IF p_estado NOT IN ('Frio','Tibio','Calificado','En Negociacion','Cliente','Convertido','Descartado','Inactivo') THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El estado del cliente no está permitido.';
+    END IF;
+    UPDATE clientes SET estado_cliente=p_estado WHERE id_cliente=p_id_cliente;
+    IF ROW_COUNT()=0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El cliente no existe o ya tiene ese estado.';
+    END IF;
+    SELECT p_id_cliente AS id_cliente,p_estado AS estado_cliente;
+END$$
+
+CREATE PROCEDURE sp_registrar_empresa(
+    IN p_nombre VARCHAR(150),
+    IN p_sector VARCHAR(100),
+    IN p_sitio_web VARCHAR(150)
+)
+BEGIN
+    IF p_nombre IS NULL OR TRIM(p_nombre)='' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El nombre de la empresa es obligatorio.';
+    END IF;
+    IF p_sitio_web IS NOT NULL AND TRIM(p_sitio_web)<>'' AND
+       TRIM(p_sitio_web) NOT LIKE 'http://%' AND TRIM(p_sitio_web) NOT LIKE 'https://%' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El sitio web debe iniciar con http:// o https://.';
+    END IF;
+    INSERT INTO empresas(nombre_empresa,sector_industria,sitio_web)
+    VALUES(TRIM(p_nombre),NULLIF(TRIM(p_sector),''),NULLIF(TRIM(p_sitio_web),''));
+    SELECT LAST_INSERT_ID() AS id_empresa;
+END$$
+
+CREATE PROCEDURE sp_detalle_empresa(IN p_id_empresa INT)
+BEGIN
+    SELECT e.id_empresa,e.nombre_empresa,e.sector_industria,e.sitio_web,
+           COUNT(DISTINCT c.id_cliente) AS total_clientes,
+           COUNT(DISTINCT CASE WHEN v.estado_venta='Completada' THEN v.id_venta END) AS ventas_completadas
+    FROM empresas e
+    LEFT JOIN clientes c ON c.id_empresa=e.id_empresa
+    LEFT JOIN ventas v ON v.id_cliente=c.id_cliente
+    WHERE e.id_empresa=p_id_empresa
+    GROUP BY e.id_empresa,e.nombre_empresa,e.sector_industria,e.sitio_web;
+    SELECT c.id_cliente,c.nombre_completo,c.correo_electronico,c.estado_cliente
+    FROM clientes c
+    WHERE c.id_empresa=p_id_empresa
+    ORDER BY c.nombre_completo;
+END$$
+
+CREATE PROCEDURE sp_consultar_auditoria(
+    IN p_tabla VARCHAR(50),
+    IN p_desde DATETIME,
+    IN p_hasta DATETIME,
+    IN p_limite INT,
+    IN p_desplazamiento INT
+)
+BEGIN
+    DECLARE v_limite INT DEFAULT 100;
+    DECLARE v_desplazamiento INT DEFAULT 0;
+    IF p_desde IS NOT NULL AND p_hasta IS NOT NULL AND p_desde>p_hasta THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El rango de fechas de auditoría no es válido.';
+    END IF;
+    SET v_limite=LEAST(GREATEST(COALESCE(p_limite,100),1),500);
+    SET v_desplazamiento=GREATEST(COALESCE(p_desplazamiento,0),0);
+    SELECT id_auditoria,tabla,id_registro,campo,valor_anterior,valor_nuevo,usuario_bd,fecha_cambio
+    FROM auditoria_cambios
+    WHERE (p_tabla IS NULL OR p_tabla='' OR tabla=p_tabla)
+      AND (p_desde IS NULL OR fecha_cambio>=p_desde)
+      AND (p_hasta IS NULL OR fecha_cambio<=p_hasta)
+    ORDER BY fecha_cambio ASC,id_auditoria ASC
+    LIMIT v_desplazamiento,v_limite;
+END$$
+
+CREATE PROCEDURE sp_consultar_sincronizaciones_salesforce(
+    IN p_estado VARCHAR(20),
+    IN p_id_cliente INT,
+    IN p_desde DATETIME,
+    IN p_hasta DATETIME,
+    IN p_limite INT,
+    IN p_desplazamiento INT
+)
+BEGIN
+    DECLARE v_limite INT DEFAULT 100;
+    DECLARE v_desplazamiento INT DEFAULT 0;
+    IF p_desde IS NOT NULL AND p_hasta IS NOT NULL AND p_desde>p_hasta THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El rango de fechas de sincronización no es válido.';
+    END IF;
+    SET v_limite=LEAST(GREATEST(COALESCE(p_limite,100),1),500);
+    SET v_desplazamiento=GREATEST(COALESCE(p_desplazamiento,0),0);
+    SELECT s.id_sincronizacion,s.id_cliente,c.nombre_completo,c.correo_electronico,
+           s.objeto_salesforce,s.operacion,s.estado,s.intentos,s.salesforce_id,
+           s.respuesta_salesforce,s.mensaje_error,s.fecha_creacion,s.fecha_actualizacion
+    FROM salesforce_sincronizaciones s
+    INNER JOIN clientes c ON c.id_cliente=s.id_cliente
+    WHERE (p_estado IS NULL OR p_estado='' OR s.estado=p_estado)
+      AND (p_id_cliente IS NULL OR s.id_cliente=p_id_cliente)
+      AND (p_desde IS NULL OR s.fecha_creacion>=p_desde)
+      AND (p_hasta IS NULL OR s.fecha_creacion<=p_hasta)
+    ORDER BY s.fecha_creacion DESC,s.id_sincronizacion DESC
+    LIMIT v_desplazamiento,v_limite;
+END$$
+
+DELIMITER ;
+/* Conteo final, incluyendo el módulo de Salesforce añadido. */
+SELECT 'salesforce_sincronizaciones' AS tabla, COUNT(*) AS registros
+FROM salesforce_sincronizaciones;

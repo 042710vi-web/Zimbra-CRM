@@ -1,9 +1,17 @@
 import { Router } from 'express';
-import { create, list } from '../../apicontroller/empresas.controller.js';
+import {
+  create,
+  detail,
+  list,
+  update,
+} from '../../apicontroller/empresas.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
+
 const router = Router();
-// HU-09: listar empresas. Endpoint: GET /api/empresas.
+
+router.get('/detalle', authenticate, detail);
 router.get('/', authenticate, list);
-// HU-09: registrar una empresa. Endpoint: POST /api/empresas.
 router.post('/', authenticate, create);
+router.post('/actualizar', authenticate, update);
+
 export default router;
