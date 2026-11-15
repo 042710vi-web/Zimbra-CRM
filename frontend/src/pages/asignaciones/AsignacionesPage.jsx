@@ -6,7 +6,7 @@ import { listVendors } from '../../services/vendedores.service.js';
 import Field from '../../components/common/Field.jsx';
 import Notice from '../../components/common/Notice.jsx';
 
-// HU-23: asignar clientes a vendedores responsables.
+// HU-21: asignar clientes a vendedores responsables.
 // Endpoint: POST /api/assignments (consumido por asignaciones.service.js).
 export default function AsignacionesPage({ suggestedClientId }) {
   const { session } = useAuth();

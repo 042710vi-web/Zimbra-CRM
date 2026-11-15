@@ -1,12 +1,12 @@
 import { api } from '../api/client.js';
 
-// HU-28: registrar ventas con su detalle de productos.
+// HU-26: registrar ventas con su detalle de productos.
 // Endpoint: POST /api/sales.
 export function createSale(token, data) {
   return api('/sales', { method: 'POST', token, body: JSON.stringify(data) });
 }
 
-// HU-29: consultar ventas con sus detalles y filtros.
+// HU-27: consultar ventas con sus detalles y filtros.
 export function listSales(token, params = {}) {
   return api(`/sales?${new URLSearchParams(params)}`, { token });
 }

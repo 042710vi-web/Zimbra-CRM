@@ -8,13 +8,13 @@ import { allowRoles } from '../middleware/role.middleware.js';
 
 const router = Router();
 router.use(authenticate);
-// HU-19: Consulta el catálogo de acciones.
+// HU-14: Consulta el catálogo de acciones.
 router.get('/actions', allowRoles('Administrador'), list);
-// HU-19: Solo el adminsitrador gestiona acciones y puntajes.
+// HU-14: Solo el administrador gestiona acciones y puntajes.
 router.post('/actions', allowRoles('Administrador'), create);
 router.post('/actions/actualizar', allowRoles('Administrador'), update);
 router.post('/actions/cambiar-estado', allowRoles('Administrador'), changeStatus);
-// HU-21: El administrador puede solicitar una recalificación general.
+// HU-16: El administrador puede solicitar una recalificación general.
 router.post('/scoring/recalculate', allowRoles('Administrador'), recalculate);
 /** Pone las direcciones de esta área a disposición de la aplicación. */
 export default router;

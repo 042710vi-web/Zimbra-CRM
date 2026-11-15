@@ -18,12 +18,12 @@ function activityData(data = {}) {
   };
 }
 
-// HU-20: Registra una actividad válida y devuelve el puntaje aplicado.
+// HU-15: Registra una actividad válida y devuelve el puntaje aplicado.
 export async function createActivity(data = {}, user = {}) {
   return createWebActivity({ ...activityData(data), usuario: user.email });
 }
 
-// HU-20: Procesa cada elemento por separado y conserva los válidos si otro falla.
+// HU-15: Procesa cada elemento por separado y conserva los válidos si otro falla.
 export async function createActivitiesBatch(data = {}, user = {}) {
   if (!Array.isArray(data.actividades) || data.actividades.length === 0) {
     throw httpError(400, 'actividades debe contener al menos un registro.');
@@ -41,7 +41,7 @@ export async function createActivitiesBatch(data = {}, user = {}) {
   return { total: data.actividades.length, aceptadas, rechazadas };
 }
 
-// HU-20: Consulta el historial respetando el vendedor responsable.
+// HU-15: Consulta el historial respetando el vendedor responsable.
 export async function getClientActivities(idValue, query = {}, user = {}) {
   const id_cliente = requireId(idValue, 'El cliente');
   return listClientActivities({

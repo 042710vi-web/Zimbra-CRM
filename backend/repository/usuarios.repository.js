@@ -13,7 +13,7 @@ export const findUserByEmail = (email) => Usuario.findOne({
   attributes: ['id_usuario', 'id_vendedor', 'correo_acceso', 'password_hash', 'rol', 'estado'],
 });
 
-// HU-04: lista usuarios sin exponer nunca password_hash.
+// HU-03: lista usuarios sin exponer nunca password_hash.
 export const findUsers = ({ q, rol, estado }) => sequelize.query(
   `SELECT u.id_usuario, u.id_vendedor, u.correo_acceso, u.rol, u.estado, u.fecha_creacion, v.nombre_vendedor
      FROM usuarios u LEFT JOIN vendedores v ON v.id_vendedor = u.id_vendedor
@@ -42,7 +42,7 @@ export async function createUser(data, usuario) {
   });
 }
 
-// HU-04: activa o desactiva un usuario y deja rastro (HU-35).
+// HU-03: activa o desactiva un usuario y deja rastro (HU-32).
 export async function updateUserStatus({ id_usuario, estado }, usuario) {
   return sequelize.transaction(async (transaction) => {
     const user = await Usuario.findByPk(id_usuario, { transaction, lock: transaction.LOCK.UPDATE });

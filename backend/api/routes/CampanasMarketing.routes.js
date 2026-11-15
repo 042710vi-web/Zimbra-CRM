@@ -13,13 +13,13 @@ import { allowRoles } from '../middleware/role.middleware.js';
 
 const router = Router();
 router.use(authenticate);
-// HU-16/HU-17: Consulta las campañas y sus resultados.
+// HU-13: Consulta las campañas y sus resultados.
 router.get('/', listarCampanasMarketing);
-// HU-16: Únicamente el administrador crea campañas.
+// HU-12: Únicamente el administrador crea campañas.
 router.post('/', allowRoles('Administrador'), crearCampanaMarketing);
-// HU-17: Únicamente el administrador modifica campañas.
+// HU-13: Únicamente el administrador modifica campañas.
 router.post('/actualizar', allowRoles('Administrador'), actualizarCampanaMarketing);
-// HU-18: Únicamente el administrador cambia el estado.
+// HU-13: Únicamente el administrador cambia el estado.
 router.post('/cambiar-estado', allowRoles('Administrador'), cambiarEstadoCampanaMarketing);
 /** Pone las direcciones de esta área a disposición de la aplicación. */
 export default router;

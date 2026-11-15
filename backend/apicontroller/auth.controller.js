@@ -7,17 +7,17 @@ export async function login(req, res, next) {
   try { res.json(await auth.login(req.body)); } catch (error) { next(error); }
 }
 
-// HU-02: cerrar sesión.
+// HU-01: cerrar sesión.
 export function logout(req, res, next) {
   try { res.json(auth.logout()); } catch (error) { next(error); }
 }
 
-// HU-01: solicitar la recuperación de contraseña.
+// Recuperación de contraseña: flujo existente fuera de las 33 historias actualizadas.
 export async function requestReset(req, res, next) {
   try { res.json(await auth.requestPasswordReset(req.body)); } catch (error) { next(error); }
 }
 
-// HU-01: restablecer la contraseña con el token de recuperación.
+// Recuperación de contraseña: flujo existente fuera de las 33 historias actualizadas.
 export async function resetPassword(req, res, next) {
   try { res.json(await auth.resetPassword(req.body)); } catch (error) { next(error); }
 }

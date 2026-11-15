@@ -8,16 +8,16 @@ import { allowRoles } from '../middleware/role.middleware.js';
 
 const router = Router();
 router.use(authenticate, allowRoles('Administrador'));
-// HU-32: genera reporte de ventas por periodo.
+// HU-29: genera reporte de ventas por periodo.
 // Endpoint: GET /api/reports/sales.
 router.get('/sales', sales);
-// HU-32: agrupa clientes por estado.
+// HU-29: agrupa clientes por estado.
 // Endpoint: GET /api/reports/clients.
 router.get('/clients', clients);
-// HU-32: resume actividad, prospectos calificados y costo por campaña.
+// HU-29: resume actividad, prospectos calificados y costo por campaña.
 // Endpoint: GET /api/reports/campaigns.
 router.get('/campaigns', campaigns);
-// HU-33: resume interacciones, seguimientos y asignaciones.
+// HU-30: resume interacciones, seguimientos y asignaciones.
 // Endpoint: GET /api/reports/interactions.
 router.get('/interactions', interactions);
 

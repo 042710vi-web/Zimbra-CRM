@@ -4,7 +4,7 @@
 import { getDashboard as readDashboard } from '../repository/Dashboard.repository.js';
 import { httpError, requireId } from '../utils/validators.js';
 
-// HU-34: Limita los datos al vendedor conectado o aplica el filtro de administración.
+// HU-31: Limita los datos al vendedor conectado o aplica el filtro de administración.
 export async function getDashboard(query = {}, user = {}) {
   if (user.role === 'Vendedor') {
     if (!user.vendorId) throw httpError(403, 'La cuenta no está vinculada a un vendedor.');

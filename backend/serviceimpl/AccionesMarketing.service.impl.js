@@ -27,7 +27,7 @@ function actionData(data = {}) {
   return { nombre_accion, puntaje };
 }
 
-// HU-19: Consulta acciones con su puntaje y el número de usos.
+// HU-14: Consulta acciones con su puntaje y el número de usos.
 export async function listMarketingActions(query = {}) {
   return readMarketingActions({
     q: String(query.q || '').trim(),
@@ -36,20 +36,20 @@ export async function listMarketingActions(query = {}) {
   });
 }
 
-// HU-19: Crea una acción disponible para futuras actividades.
+// HU-14: Crea una acción disponible para futuras actividades.
 export async function createMarketingAction(data = {}) {
   const id_accion = await saveMarketingAction(actionData(data));
   return { id_accion, message: 'Acción de marketing registrada correctamente.' };
 }
 
-// HU-19: Actualiza el puntaje futuro sin alterar el historial ya registrado.
+// HU-14: Actualiza el puntaje futuro sin alterar el historial ya registrado.
 export async function editMarketingAction(data = {}, user = {}) {
   const id_accion = requireId(data.id_accion, 'La acción');
   await updateMarketingAction({ id_accion, ...actionData(data) }, user.email);
   return { id_accion, message: 'Acción de marketing actualizada correctamente.' };
 }
 
-// HU-19: Cambia la disponibilidad de la acción sin borrar su historial.
+// HU-14: Cambia la disponibilidad de la acción sin borrar su historial.
 export async function changeMarketingActionState(data = {}, user = {}) {
   const id_accion = requireId(data.id_accion, 'La acción');
   const estado = parseState(data.estado);

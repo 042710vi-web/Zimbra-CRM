@@ -30,4 +30,4 @@ Para iniciar sesión, usa una cuenta y contraseña válidas de la tabla `usuario
 - `src/assets/`: estilos e imágenes.
 - `src/utils/`: funciones auxiliares.
 
-Los comentarios de servicios y pantallas asocian los flujos implementados con HU-01, HU-05, HU-11, HU-13, HU-23 y HU-28. El cierre de sesión del cliente se relaciona con HU-02; la autorización y el manejo de errores con HU-03 y HU-36. Los demás módulos quedan pendientes de implementar y asociar a sus historias.
+Los comentarios de servicios y pantallas usan los identificadores de la estructura actualizada de 33 historias. Las carpetas vacías `src/pages/alertas`, `src/pages/correo_automatizado` y `src/pages/salesforce` preparan los módulos de alertas (HU-17), correo automatizado (HU-18 y HU-19) y Salesforce.com (HU-23 y HU-24).

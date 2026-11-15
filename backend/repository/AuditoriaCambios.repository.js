@@ -22,7 +22,7 @@ const AUDITABLES = {
   ventas: Venta,
 };
 
-// HU-35: el sistema registra los campos modificados solo si la fila relacionada existe y la transacción está activa.
+// HU-32: el sistema registra los campos modificados solo si la fila relacionada existe y la transacción está activa.
 // `cambios` presenta cada campo con su valor anterior y su valor nuevo.
 export async function registerChanges({ tabla, idRegistro, cambios, usuario, transaction }) {
   const model = Object.prototype.hasOwnProperty.call(AUDITABLES, tabla) ? AUDITABLES[tabla] : null;

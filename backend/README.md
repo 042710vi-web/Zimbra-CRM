@@ -6,9 +6,9 @@ El backend organiza las solicitudes del CRM en rutas, controladores, servicios y
 
 Las capas que trabajan con una tabla usan su nombre SQL como base del nombre de archivo. Por ejemplo, la solicitud de campañas recorre: `api/routes/CampanasMarketing.routes.js` → `apicontroller/CampanasMarketing.controller.js` → `service/CampanasMarketing.service.js` → `serviceimpl/CampanasMarketing.service.impl.js` → `repository/CampanasMarketing.repository.js` → `entity/CampanasMarketing.entity.js`. Los nombres de las URLs públicas se conservan para no cambiar las solicitudes de Postman.
 
-Las tablas principales con esta convención son `empresas`, `clientes`, `vendedores`, `usuarios`, `recuperacion_claves`, `productos`, `campanas_marketing`, `acciones_marketing`, `actividad_web`, `ventas`, `descargas_prueba`, `asignaciones_crm`, `interacciones`, `detalle_ventas` y `auditoria_cambios`. Los detalles de venta se gestionan junto con `ventas`; la recuperación de claves forma parte de la autenticación; y la auditoría se registra internamente, por lo que estas tablas no tienen rutas públicas independientes. Los módulos de panel, reportes y salud reúnen información de varias tablas y mantienen nombres propios.
+Las tablas principales con esta convención son `empresas`, `clientes`, `vendedores`, `usuarios`, `recuperacion_claves`, `productos`, `campanas_marketing`, `acciones_marketing`, `actividad_web`, `ventas`, `descargas_prueba`, `asignaciones_crm`, `interacciones`, `detalle_ventas`, `auditoria_cambios`, `alertas`, `plantillas_correo`, `correos_enviados` y `sincronizaciones_salesforce`. Los detalles de venta se gestionan junto con `ventas`; la recuperación de claves forma parte de la autenticación; y la auditoría, alertas, correos e historial de Salesforce se registran internamente, por lo que estas tablas no tienen rutas públicas independientes todavía. Los módulos de panel, reportes y salud reúnen información de varias tablas y mantienen nombres propios.
 
-El alcance documentado en este apartado cubre las historias HU-10 a HU-21 y HU-34.
+El alcance documentado en este apartado cubre productos, pruebas, campañas, marketing y panel, correspondientes a HU-07 a HU-16 y HU-31. Las carpetas `backend/alertas`, `backend/correo_automatizado` y `backend/salesforce` están vacías; las historias HU-17 a HU-19 y HU-23 a HU-24 quedan preparadas para su implementación.
 
 ## Preparación
 
@@ -21,7 +21,7 @@ El archivo `database/CRM Zimbra.sql` crea la base `zimbra_bd` desde cero: contie
 
 La API se encuentra en `http://localhost:3000`. Todas las rutas de este alcance requieren el encabezado `Authorization: Bearer <token>`, obtenido mediante el inicio de sesión. Las operaciones de administración requieren el rol `Administrador`; las consultas del panel aceptan `Administrador` o `Vendedor`. El panel y el historial limitan los datos de un vendedor a sus clientes asignados.
 
-## Productos y licencias — HU-10 a HU-12
+## Productos y licencias — HU-07 y HU-08
 
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|
@@ -34,7 +34,7 @@ Ejemplo de alta: `{ "nombre_producto": "Zimbra Básico", "tipo_licencia": "Comer
 
 Ejemplo de actualización: `{ "id_producto": 1, "nombre_producto": "Zimbra Básico", "tipo_licencia": "Comercial", "precio": 125000 }`. Ejemplo de cambio de estado: `{ "id_producto": 1, "estado": false }`.
 
-## Pruebas de producto — HU-13 a HU-15
+## Pruebas de producto — HU-09 a HU-11
 
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|
@@ -44,7 +44,7 @@ Ejemplo de actualización: `{ "id_producto": 1, "nombre_producto": "Zimbra Bási
 
 Ejemplo: `{ "id_cliente": 1, "id_producto": 4 }`. La prueba solo se registra para un cliente habilitado y un producto activo de tipo prueba; no se duplica una prueba activa del mismo producto para el cliente. La consulta presenta días restantes, alerta cuando faltan siete días o menos, y el contrato de venta asociado cuando la prueba se convierte. El esquema crea primero `ventas` y declara `id_venta` como clave foránea dentro de `descargas_prueba`. El servidor también actualiza los vencimientos al iniciar y cada 24 horas.
 
-## Campañas de marketing — HU-16 a HU-18
+## Campañas de marketing — HU-12 y HU-13
 
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|
@@ -55,7 +55,7 @@ Ejemplo: `{ "id_cliente": 1, "id_producto": 4 }`. La prueba solo se registra par
 
 Ejemplo: `{ "nombre_campana": "Lanzamiento", "descripcion": "Campaña de producto", "presupuesto": 500000, "fecha_inicio": "2026-11-01", "fecha_fin": "2026-11-30", "estado": "Activa" }`. Las fechas deben ser válidas, la fecha final no puede ser anterior a la inicial y el presupuesto no puede ser negativo.
 
-## Acciones de marketing y puntaje — HU-19 y HU-21
+## Acciones de marketing y puntaje — HU-14 y HU-16
 
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|
@@ -67,7 +67,7 @@ Ejemplo: `{ "nombre_campana": "Lanzamiento", "descripcion": "Campaña de product
 
 Ejemplo de acción: `{ "nombre_accion": "Consulta de precios", "puntaje": 15 }`. El puntaje debe ser un entero entre 0 y 100. El puntaje acumulado clasifica al prospecto como `Frio` (menos de 30), `Tibio` (30 a 69) o `Calificado` (70 o más). Los estados `Cliente` e `Inactivo` se conservan al registrar o recalcular actividades.
 
-## Actividad web — HU-20
+## Actividad web — HU-15
 
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|
@@ -77,7 +77,7 @@ Ejemplo de acción: `{ "nombre_accion": "Consulta de precios", "puntaje": 15 }`.
 
 Ejemplo individual: `{ "id_cliente": 1, "id_accion": 2, "id_campana": 1, "direccion_origen": "Formulario web", "detalle": "Solicitó información" }`. La campaña es opcional. Solo se aceptan clientes, acciones y campañas habilitados; la campaña debe estar dentro de sus fechas. Para el envío masivo, el cuerpo usa `{ "actividades": [ { "id_cliente": 1, "id_accion": 2 }, { "id_cliente": 2, "id_accion": 3 } ] }`.
 
-## Panel comercial — HU-34
+## Panel comercial — HU-31
 
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|

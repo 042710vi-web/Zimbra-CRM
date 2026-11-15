@@ -61,7 +61,7 @@ export async function login({ email, password }) {
   };
 }
 
-// HU-02: cerrar sesión. El cliente elimina su token.
+// HU-01: cerrar sesión. El cliente elimina su token.
 export function logout() {
   return { message: 'Sesión cerrada correctamente.' };
 }

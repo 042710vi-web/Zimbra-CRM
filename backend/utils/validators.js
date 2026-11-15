@@ -1,4 +1,4 @@
-// HU-36: validaciones reutilizables que devuelven mensajes claros al usuario.
+// HU-33: validaciones reutilizables que devuelven mensajes claros al usuario.
 export const CLIENT_STATES = ['Frio', 'Tibio', 'Calificado', 'En Negociacion', 'Cliente', 'Convertido', 'Descartado', 'Inactivo'];
 export const USER_ROLES = ['Administrador', 'Vendedor'];
 

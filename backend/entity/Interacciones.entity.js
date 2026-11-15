@@ -15,6 +15,6 @@ export const Interaccion = sequelize.define('Interaccion', {
   notas: DataTypes.TEXT,
 }, { tableName: 'interacciones' });
 
-// HU-26/HU-27: permite consultar las interacciones con su asignación comercial.
+// HU-25: permite consultar las interacciones con su asignación comercial.
 Asignacion.hasMany(Interaccion, { foreignKey: 'id_asignacion', as: 'interacciones' });
 Interaccion.belongsTo(Asignacion, { foreignKey: 'id_asignacion', as: 'asignacion' });

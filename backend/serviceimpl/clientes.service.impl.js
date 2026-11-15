@@ -7,7 +7,7 @@ import {
   requireEmail, requireId, requireOneOf, requireText,
 } from '../utils/validators.js';
 
-// HU-36: valida y normaliza los datos antes de llegar a la base de datos.
+// HU-33: valida y normaliza los datos antes de llegar a la base de datos.
 function cleanClientData(data) {
   return {
     ...('id_empresa' in data ? { id_empresa: optionalId(data.id_empresa, 'La empresa') } : {}),
@@ -20,21 +20,21 @@ function cleanClientData(data) {
   };
 }
 
-// HU-05
+// HU-04
 /** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function registerClient(data = {}) {
   const id = await createClient(cleanClientData(data));
   return { id_cliente: id, message: 'Cliente registrado correctamente.' };
 }
 
-// HU-06
+// HU-05
 /** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function listClients(query = {}) {
   const estado = query.estado ? requireOneOf(query.estado, 'El estado', CLIENT_STATES) : null;
   return findClients({ q: String(query.q || '').trim(), estado, ...pagination(query) });
 }
 
-// HU-07
+// HU-05
 /** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function updateClient(data = {}, user) {
   const id_cliente = requireId(data.id_cliente, 'El cliente');
@@ -42,7 +42,7 @@ export async function updateClient(data = {}, user) {
   return { id_cliente, message: 'Cliente actualizado correctamente.' };
 }
 
-// HU-08
+// HU-05
 /** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function changeClientStatus(data = {}, user) {
   const id_cliente = requireId(data.id_cliente, 'El cliente');

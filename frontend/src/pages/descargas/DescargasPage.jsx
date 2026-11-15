@@ -6,7 +6,7 @@ import { createTrial } from '../../services/descargas.service.js';
 import Field from '../../components/common/Field.jsx';
 import Notice from '../../components/common/Notice.jsx';
 
-// HU-13: registrar una prueba de producto por 60 días.
+// HU-09: registrar una prueba de producto por 60 días.
 // Endpoint: POST /api/trials (consumido por descargas.service.js).
 export default function DescargasPage({ suggestedClientId }) {
   const { session } = useAuth();

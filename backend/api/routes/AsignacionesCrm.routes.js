@@ -7,13 +7,13 @@ import { authenticate } from '../middleware/auth.middleware.js';
 import { allowRoles } from '../middleware/role.middleware.js';
 const router = Router();
 router.use(authenticate);
-// HU-24: GET /api/assignments lista asignaciones del vendedor o todas para administrador.
+// HU-22: GET /api/assignments lista asignaciones del vendedor o todas para administrador.
 router.get('/', list);
-// HU-23: POST /api/assignments asigna un prospecto (solo administrador).
+// HU-21: POST /api/assignments asigna un prospecto (solo administrador).
 router.post('/', allowRoles('Administrador'), create);
-// HU-25: POST /api/assignments/reasignar conserva y finaliza la asignación anterior.
+// HU-22: POST /api/assignments/reasignar conserva y finaliza la asignación anterior.
 router.post('/reasignar', allowRoles('Administrador'), changeAssignee);
-// HU-25: POST /api/assignments/finalizar finaliza la asignación activa.
+// HU-22: POST /api/assignments/finalizar finaliza la asignación activa.
 router.post('/finalizar', allowRoles('Administrador'), close);
 /** Pone las direcciones de esta área a disposición de la aplicación. */
 export default router;

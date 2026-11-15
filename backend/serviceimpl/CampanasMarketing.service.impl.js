@@ -42,7 +42,7 @@ function validarDatosCampana(data = {}) {
   };
 }
 
-// HU-16/HU-17: consulta campañas con filtros de estado y fechas.
+// HU-13: consulta campañas con filtros de estado y fechas.
 export async function listarCampanasMarketing(query = {}) {
   const estado = query.estado ? requireOneOf(query.estado, 'El estado', ESTADOS_CAMPANA) : undefined;
   const desde = query.desde ? validarFecha(query.desde, 'desde') : undefined;
@@ -51,14 +51,14 @@ export async function listarCampanasMarketing(query = {}) {
   return consultarCampanasMarketing({ estado, desde, hasta, ...pagination(query) });
 }
 
-// HU-16: registra una campaña activa y verifica sus fechas y presupuesto.
+// HU-12: registra una campaña activa y verifica sus fechas y presupuesto.
 export async function crearCampanaMarketing(data = {}) {
   const campana = validarDatosCampana(data);
   const id_campana = await guardarCampanaMarketing(campana);
   return { id_campana, message: 'Campaña registrada correctamente.' };
 }
 
-// HU-17: modifica una campaña sin desvincular su actividad histórica.
+// HU-13: modifica una campaña sin desvincular su actividad histórica.
 export async function actualizarCampanaMarketing(data = {}, user = {}) {
   const id_campana = requireId(data.id_campana, 'La campaña');
   const campana = validarDatosCampana(data);
@@ -66,7 +66,7 @@ export async function actualizarCampanaMarketing(data = {}, user = {}) {
   return { id_campana, message: 'Campaña actualizada correctamente.' };
 }
 
-// HU-18: activa o pausa una campaña sin eliminar sus métricas anteriores.
+// HU-13: activa o pausa una campaña sin eliminar sus métricas anteriores.
 export async function cambiarEstadoCampanaMarketing(data = {}, user = {}) {
   const id_campana = requireId(data.id_campana, 'La campaña');
   const estado = requireOneOf(data.estado, 'El estado', ESTADOS_CAMPANA);

@@ -5,7 +5,7 @@ import { createClient, listClients } from '../../services/clientes.service.js';
 import Field from '../../components/common/Field.jsx';
 import Notice from '../../components/common/Notice.jsx';
 
-// HU-05: registrar nuevos clientes.
+// HU-04: registrar nuevos clientes.
 // Endpoint: POST /api/clients (consumido por clientes.service.js).
 export default function ClientesPage({ onCreated }) {
   const { session, logout } = useAuth();

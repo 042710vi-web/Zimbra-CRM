@@ -6,7 +6,7 @@ import { changeStatus, create, list } from '../../apicontroller/Usuarios.control
 import { authenticate } from '../middleware/auth.middleware.js';
 import { allowRoles } from '../middleware/role.middleware.js';
 const router = Router();
-// HU-03 / HU-04: solo el Administrador gestiona usuarios.
+// HU-03: solo el Administrador gestiona usuarios.
 router.use(authenticate, allowRoles('Administrador'));
 // Endpoint: GET /api/users.
 router.get('/', list);

@@ -7,9 +7,9 @@ import { authenticate } from '../middleware/auth.middleware.js';
 
 const router = Router();
 router.use(authenticate);
-// HU-20: Registra una actividad web individual.
+// HU-15: Registra una actividad web individual.
 router.post('/', create);
-// HU-20: Registra varias actividades e informa cuáles fueron rechazadas.
+// HU-15: Registra varias actividades e informa cuáles fueron rechazadas.
 router.post('/bulk', createBatch);
 /** Pone las direcciones de esta área a disposición de la aplicación. */
 export default router;

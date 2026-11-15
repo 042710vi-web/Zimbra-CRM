@@ -36,7 +36,7 @@ function parseState(value) {
   throw httpError(400, 'estado debe ser activo o inactivo.');
 }
 
-// HU-11: Presenta el catálogo con los filtros y el acceso que corresponden al rol.
+// HU-08: Presenta el catálogo con los filtros y el acceso que corresponden al rol.
 export async function listProducts(query = {}, user = {}) {
   const tipo_licencia = query.tipo_licencia
     ? requireOneOf(query.tipo_licencia, 'El tipo de licencia', LICENSE_TYPES)
@@ -47,14 +47,14 @@ export async function listProducts(query = {}, user = {}) {
   return readProducts(filters);
 }
 
-// HU-10: Valida los datos antes de registrar un producto activo.
+// HU-07: Valida los datos antes de registrar un producto activo.
 export async function registerProduct(data = {}) {
   const product = validateProduct(data);
   const id_producto = await createProduct(product);
   return { id_producto, message: 'Producto registrado correctamente.' };
 }
 
-// HU-11: Actualiza el catálogo sin modificar los precios ya guardados en ventas.
+// HU-08: Actualiza el catálogo sin modificar los precios ya guardados en ventas.
 export async function editProduct(data = {}, user = {}) {
   const id_producto = requireId(data.id_producto, 'El producto');
   const product = validateProduct(data);
@@ -62,7 +62,7 @@ export async function editProduct(data = {}, user = {}) {
   return { id_producto, message: 'Producto actualizado correctamente.' };
 }
 
-// HU-12: Cambia la disponibilidad sin eliminar el historial del producto.
+// HU-08: Cambia la disponibilidad sin eliminar el historial del producto.
 export async function changeProductState(data = {}, user = {}) {
   const id_producto = requireId(data.id_producto, 'El producto');
   const estado = parseState(data.estado);

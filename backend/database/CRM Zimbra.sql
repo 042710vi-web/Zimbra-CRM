@@ -49,7 +49,7 @@ CREATE TABLE usuarios (
 );
 
 /* Controla la generación y validación de tokens temporales para
-   recuperación de contraseñas (HU-01, RNF04). */
+   recuperación de contraseñas (flujo existente fuera de las 33 historias actualizadas, RNF04). */
 CREATE TABLE recuperacion_claves (
     id_recuperacion BIGINT AUTO_INCREMENT PRIMARY KEY,
     id_usuario INT NOT NULL,
@@ -78,7 +78,7 @@ CREATE TABLE productos (
 );
 
 /* Registra las distintas iniciativas de marketing diseñadas para atraer
-   tráfico con control de fechas (HU-16). */
+   tráfico con control de fechas (HU-12, HU-13). */
 CREATE TABLE campanas_marketing (
     id_campana INT AUTO_INCREMENT PRIMARY KEY,
     nombre_campana VARCHAR(150) NOT NULL UNIQUE,
@@ -93,7 +93,7 @@ CREATE TABLE campanas_marketing (
 );
 
 /* Catálogo de acciones rastreables y el puntaje asignado a cada una
-   (HU-19, modelo de Lead Scoring). */
+   (HU-14, modelo de Lead Scoring). */
 CREATE TABLE acciones_marketing (
     id_accion INT AUTO_INCREMENT PRIMARY KEY,
     nombre_accion VARCHAR(100) NOT NULL UNIQUE,
@@ -103,7 +103,7 @@ CREATE TABLE acciones_marketing (
 );
 
 /* Registra cada interacción o evento que un cliente realiza dentro del
-   sitio web (HU-20). */
+   sitio web (HU-15). */
 CREATE TABLE actividad_web (
     id_actividad INT AUTO_INCREMENT PRIMARY KEY,
     id_cliente INT NOT NULL,
@@ -119,7 +119,7 @@ CREATE TABLE actividad_web (
 );
 
 /* Almacena la información general de cada contrato, método de pago y
-   el total consolidado (HU-28). */
+   el total consolidado (HU-26, HU-27, HU-28). */
 CREATE TABLE ventas (
     id_venta INT AUTO_INCREMENT PRIMARY KEY,
     numero_contrato VARCHAR(100) UNIQUE,
@@ -135,7 +135,7 @@ CREATE TABLE ventas (
 );
 
 /* Controla las descargas de las versiones de prueba y sus respectivas
-   fechas de vencimiento (HU-13, HU-15). */
+   fechas de vencimiento (HU-09, HU-10, HU-11). */
 CREATE TABLE descargas_prueba (
     id_descarga INT AUTO_INCREMENT PRIMARY KEY,
     id_cliente INT NOT NULL,
@@ -151,7 +151,7 @@ CREATE TABLE descargas_prueba (
 );
 
 /* Gestiona la asignación histórica y actual de los clientes a los
-   vendedores (HU-23, HU-25). */
+   vendedores (HU-21, HU-22). */
 CREATE TABLE asignaciones_crm (
     id_asignacion INT AUTO_INCREMENT PRIMARY KEY,
     id_cliente INT NOT NULL,
@@ -165,7 +165,7 @@ CREATE TABLE asignaciones_crm (
 );
 
 /* Registra la bitácora de comunicaciones, resultados y gestiones
-   comerciales con los clientes (HU-26). */
+   comerciales con los clientes (HU-25). */
 CREATE TABLE interacciones (
     id_interaccion INT AUTO_INCREMENT PRIMARY KEY,
     id_asignacion INT NOT NULL,
@@ -179,7 +179,7 @@ CREATE TABLE interacciones (
 );
 
 /* Detalla los productos específicos, cantidades, precios y subtotales
-   acordados en cada venta (HU-28). */
+   acordados en cada venta (HU-26). */
 CREATE TABLE detalle_ventas (
     id_detalle INT AUTO_INCREMENT PRIMARY KEY,
     id_venta INT NOT NULL,
@@ -192,7 +192,7 @@ CREATE TABLE detalle_ventas (
     FOREIGN KEY (id_producto) REFERENCES productos(id_producto)
 );
 
-/* Conserva la trazabilidad histórica de los cambios (HU-35). */
+/* Conserva la trazabilidad histórica de los cambios (HU-32). */
 CREATE TABLE auditoria_cambios (
     id_auditoria BIGINT AUTO_INCREMENT PRIMARY KEY,
     tabla VARCHAR(50) NOT NULL,
@@ -204,12 +204,100 @@ CREATE TABLE auditoria_cambios (
     fecha_cambio DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+/* Conserva alertas comerciales para prospectos calificados, actividad de
+   retorno y vencimientos de prueba (HU-11, HU-17). */
+CREATE TABLE alertas (
+    id_alerta BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id_cliente INT NOT NULL,
+    id_vendedor INT NULL,
+    id_descarga INT NULL,
+    tipo_alerta VARCHAR(40) NOT NULL,
+    mensaje VARCHAR(255) NOT NULL,
+    clave_evento VARCHAR(120) UNIQUE,
+    estado_alerta VARCHAR(20) NOT NULL DEFAULT 'Pendiente',
+    fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+    fecha_atencion DATETIME NULL,
+    id_usuario_atendio INT NULL,
+    nota_atencion VARCHAR(500) NULL,
+    CONSTRAINT chk_tipo_alerta CHECK (tipo_alerta IN
+        ('Prospecto calificado','Retorno al sitio','Prueba por vencer','Prueba vencida')),
+    CONSTRAINT chk_estado_alerta CHECK (estado_alerta IN ('Pendiente','Atendida')),
+    FOREIGN KEY (id_cliente) REFERENCES clientes(id_cliente),
+    FOREIGN KEY (id_vendedor) REFERENCES vendedores(id_vendedor),
+    FOREIGN KEY (id_descarga) REFERENCES descargas_prueba(id_descarga),
+    FOREIGN KEY (id_usuario_atendio) REFERENCES usuarios(id_usuario),
+    INDEX idx_alertas_vendedor_estado (id_vendedor, estado_alerta, fecha_creacion),
+    INDEX idx_alertas_cliente (id_cliente, fecha_creacion)
+);
+
+/* Define plantillas por evento y permite una sola plantilla activa para
+   cada evento (HU-18). */
+CREATE TABLE plantillas_correo (
+    id_plantilla INT AUTO_INCREMENT PRIMARY KEY,
+    evento VARCHAR(80) NOT NULL,
+    nombre_plantilla VARCHAR(120) NOT NULL,
+    asunto VARCHAR(200) NOT NULL,
+    cuerpo TEXT NOT NULL,
+    estado BOOLEAN NOT NULL DEFAULT TRUE,
+    evento_activo VARCHAR(80) GENERATED ALWAYS AS
+        (CASE WHEN estado = TRUE THEN evento ELSE NULL END) STORED,
+    fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+    fecha_actualizacion DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT uq_plantilla_activa_por_evento UNIQUE (evento_activo),
+    INDEX idx_plantillas_evento_estado (evento, estado)
+);
+
+/* Guarda el resultado, los intentos y la clave de idempotencia de cada
+   correo automatizado (HU-19). */
+CREATE TABLE correos_enviados (
+    id_correo BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id_cliente INT NOT NULL,
+    id_plantilla INT NOT NULL,
+    clave_idempotencia VARCHAR(160) NOT NULL UNIQUE,
+    evento VARCHAR(80) NOT NULL,
+    correo_destino VARCHAR(150) NOT NULL,
+    asunto_enviado VARCHAR(200) NOT NULL,
+    cuerpo_enviado TEXT NOT NULL,
+    estado_correo VARCHAR(20) NOT NULL DEFAULT 'Pendiente',
+    intentos TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    ultimo_error TEXT NULL,
+    fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+    fecha_envio DATETIME NULL,
+    proximo_intento DATETIME NULL,
+    CONSTRAINT chk_estado_correo CHECK (estado_correo IN ('Pendiente','Enviado','Fallido')),
+    CONSTRAINT chk_intentos_correo CHECK (intentos BETWEEN 0 AND 3),
+    FOREIGN KEY (id_cliente) REFERENCES clientes(id_cliente),
+    FOREIGN KEY (id_plantilla) REFERENCES plantillas_correo(id_plantilla),
+    INDEX idx_correos_estado_fecha (estado_correo, fecha_creacion),
+    INDEX idx_correos_cliente (id_cliente, fecha_creacion)
+);
+
+/* Registra el estado y los reintentos de sincronización de cada cliente
+   con Salesforce.com, evitando duplicar el prospecto remoto (HU-23, HU-24). */
+CREATE TABLE sincronizaciones_salesforce (
+    id_sincronizacion BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id_cliente INT NOT NULL UNIQUE,
+    tipo_registro VARCHAR(20) NOT NULL DEFAULT 'Lead',
+    id_registro_salesforce VARCHAR(100) NULL UNIQUE,
+    estado_sincronizacion VARCHAR(20) NOT NULL DEFAULT 'Pendiente',
+    intentos TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    ultimo_error TEXT NULL,
+    fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+    fecha_actualizacion DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    fecha_sincronizacion DATETIME NULL,
+    CONSTRAINT chk_tipo_registro_salesforce CHECK (tipo_registro IN ('Lead','Contact')),
+    CONSTRAINT chk_estado_salesforce CHECK (estado_sincronizacion IN ('Pendiente','Sincronizada','Fallida')),
+    CONSTRAINT chk_intentos_salesforce CHECK (intentos BETWEEN 0 AND 3),
+    FOREIGN KEY (id_cliente) REFERENCES clientes(id_cliente),
+    INDEX idx_salesforce_estado_fecha (estado_sincronizacion, fecha_actualizacion)
+);
+
 /* ---------------------------------------------------------------------
 2. DATOS SIMULADOS (mínimo 30 registros por tabla)
 Criterios:
 - clientes: 35 registros (reducido para no saturar el script).
 - actividad_web: 150 registros (reducido de 532).
-- El resto de tablas: 30 registros cada una.
+- El resto de tablas, incluidas las cuatro nuevas: 30 registros cada una.
 - Las llaves foráneas se respetan en el orden de inserción.
 --------------------------------------------------------------------- */
 
@@ -876,8 +964,108 @@ INSERT INTO auditoria_cambios (id_auditoria, tabla, id_registro, campo, valor_an
 -- Ajuste: total_venta de cada venta = suma de su detalle (los datos simulados no cuadraban)
 UPDATE ventas v SET total_venta = (SELECT SUM(d.subtotal) FROM detalle_ventas d WHERE d.id_venta = v.id_venta);
 
+-- 2.16 alertas (30): prospectos calificados, retornos y pruebas por vencer/vencidas
+INSERT INTO alertas
+    (id_cliente, id_vendedor, id_descarga, tipo_alerta, mensaje, clave_evento,
+     estado_alerta, fecha_creacion, fecha_atencion, id_usuario_atendio, nota_atencion)
+SELECT
+    c.id_cliente,
+    (SELECT a.id_vendedor FROM asignaciones_crm a
+     WHERE a.id_cliente = c.id_cliente AND a.estado = 'Activa' ORDER BY a.id_asignacion DESC LIMIT 1),
+    (SELECT d.id_descarga FROM descargas_prueba d
+     WHERE d.id_cliente = c.id_cliente ORDER BY d.id_descarga DESC LIMIT 1),
+    CASE MOD(c.id_cliente - 1, 4)
+        WHEN 0 THEN 'Prospecto calificado'
+        WHEN 1 THEN 'Retorno al sitio'
+        WHEN 2 THEN 'Prueba por vencer'
+        ELSE 'Prueba vencida'
+    END,
+    CONCAT('Alerta de seguimiento para ', c.nombre_completo),
+    CONCAT('seed-alert-', c.id_cliente),
+    IF(MOD(c.id_cliente, 2) = 0, 'Atendida', 'Pendiente'),
+    DATE_SUB(NOW(), INTERVAL c.id_cliente DAY),
+    IF(MOD(c.id_cliente, 2) = 0, DATE_SUB(NOW(), INTERVAL (c.id_cliente - 1) DAY), NULL),
+    IF(MOD(c.id_cliente, 2) = 0, 1, NULL),
+    IF(MOD(c.id_cliente, 2) = 0, 'Seguimiento registrado', NULL)
+FROM clientes c
+WHERE c.id_cliente BETWEEN 1 AND 30;
+
+-- 2.17 plantillas_correo (30): una plantilla activa por evento y versiones históricas inactivas
+INSERT INTO plantillas_correo (evento, nombre_plantilla, asunto, cuerpo, estado) VALUES
+('cliente_registrado','Bienvenida cliente v1','Bienvenido a Zimbra','Hola {{nombre}}, gracias por registrarte.',1),
+('prueba_iniciada','Inicio de prueba v1','Tu prueba ha comenzado','Hola {{nombre}}, tu prueba vence el {{fecha_fin}}.',1),
+('prueba_por_vencer','Prueba por vencer v1','Tu prueba está por vencer','Hola {{nombre}}, tu prueba vence pronto.',1),
+('prospecto_calificado','Prospecto calificado v1','Conozcamos tus necesidades','Hola {{nombre}}, queremos ayudarte.',1),
+('venta_completada','Venta completada v1','Gracias por tu compra','Hola {{nombre}}, registramos tu compra.',1),
+('cliente_registrado','Bienvenida cliente v2','Bienvenido a Zimbra','Hola {{nombre}}, gracias por registrarte.',0),
+('prueba_iniciada','Inicio de prueba v2','Tu prueba ha comenzado','Hola {{nombre}}, tu prueba vence el {{fecha_fin}}.',0),
+('prueba_por_vencer','Prueba por vencer v2','Tu prueba está por vencer','Hola {{nombre}}, tu prueba vence pronto.',0),
+('prospecto_calificado','Prospecto calificado v2','Conozcamos tus necesidades','Hola {{nombre}}, queremos ayudarte.',0),
+('venta_completada','Venta completada v2','Gracias por tu compra','Hola {{nombre}}, registramos tu compra.',0),
+('cliente_registrado','Bienvenida cliente v3','Bienvenido a Zimbra','Hola {{nombre}}, gracias por registrarte.',0),
+('prueba_iniciada','Inicio de prueba v3','Tu prueba ha comenzado','Hola {{nombre}}, tu prueba vence el {{fecha_fin}}.',0),
+('prueba_por_vencer','Prueba por vencer v3','Tu prueba está por vencer','Hola {{nombre}}, tu prueba vence pronto.',0),
+('prospecto_calificado','Prospecto calificado v3','Conozcamos tus necesidades','Hola {{nombre}}, queremos ayudarte.',0),
+('venta_completada','Venta completada v3','Gracias por tu compra','Hola {{nombre}}, registramos tu compra.',0),
+('cliente_registrado','Bienvenida cliente v4','Bienvenido a Zimbra','Hola {{nombre}}, gracias por registrarte.',0),
+('prueba_iniciada','Inicio de prueba v4','Tu prueba ha comenzado','Hola {{nombre}}, tu prueba vence el {{fecha_fin}}.',0),
+('prueba_por_vencer','Prueba por vencer v4','Tu prueba está por vencer','Hola {{nombre}}, tu prueba vence pronto.',0),
+('prospecto_calificado','Prospecto calificado v4','Conozcamos tus necesidades','Hola {{nombre}}, queremos ayudarte.',0),
+('venta_completada','Venta completada v4','Gracias por tu compra','Hola {{nombre}}, registramos tu compra.',0),
+('cliente_registrado','Bienvenida cliente v5','Bienvenido a Zimbra','Hola {{nombre}}, gracias por registrarte.',0),
+('prueba_iniciada','Inicio de prueba v5','Tu prueba ha comenzado','Hola {{nombre}}, tu prueba vence el {{fecha_fin}}.',0),
+('prueba_por_vencer','Prueba por vencer v5','Tu prueba está por vencer','Hola {{nombre}}, tu prueba vence pronto.',0),
+('prospecto_calificado','Prospecto calificado v5','Conozcamos tus necesidades','Hola {{nombre}}, queremos ayudarte.',0),
+('venta_completada','Venta completada v5','Gracias por tu compra','Hola {{nombre}}, registramos tu compra.',0),
+('cliente_registrado','Bienvenida cliente v6','Bienvenido a Zimbra','Hola {{nombre}}, gracias por registrarte.',0),
+('prueba_iniciada','Inicio de prueba v6','Tu prueba ha comenzado','Hola {{nombre}}, tu prueba vence el {{fecha_fin}}.',0),
+('prueba_por_vencer','Prueba por vencer v6','Tu prueba está por vencer','Hola {{nombre}}, tu prueba vence pronto.',0),
+('prospecto_calificado','Prospecto calificado v6','Conozcamos tus necesidades','Hola {{nombre}}, queremos ayudarte.',0),
+('venta_completada','Venta completada v6','Gracias por tu compra','Hola {{nombre}}, registramos tu compra.',0);
+
+-- 2.18 correos_enviados (30): historial de envíos con reintentos e idempotencia
+INSERT INTO correos_enviados
+    (id_cliente, id_plantilla, clave_idempotencia, evento, correo_destino,
+     asunto_enviado, cuerpo_enviado, estado_correo, intentos, ultimo_error,
+     fecha_creacion, fecha_envio, proximo_intento)
+SELECT
+    c.id_cliente,
+    MOD(c.id_cliente - 1, 5) + 1,
+    CONCAT('seed-email-', c.id_cliente),
+    p.evento,
+    c.correo_electronico,
+    p.asunto,
+    p.cuerpo,
+    CASE MOD(c.id_cliente, 3) WHEN 0 THEN 'Fallido' WHEN 1 THEN 'Enviado' ELSE 'Pendiente' END,
+    CASE MOD(c.id_cliente, 3) WHEN 0 THEN 3 WHEN 1 THEN 1 ELSE 0 END,
+    IF(MOD(c.id_cliente, 3) = 0, 'Fallo simulado de entrega', NULL),
+    DATE_SUB(NOW(), INTERVAL c.id_cliente HOUR),
+    IF(MOD(c.id_cliente, 3) = 1, DATE_SUB(NOW(), INTERVAL (c.id_cliente - 1) HOUR), NULL),
+    IF(MOD(c.id_cliente, 3) = 2, DATE_ADD(NOW(), INTERVAL 1 HOUR), NULL)
+FROM clientes c
+JOIN plantillas_correo p ON p.id_plantilla = MOD(c.id_cliente - 1, 5) + 1
+WHERE c.id_cliente BETWEEN 1 AND 30;
+
+-- 2.19 sincronizaciones_salesforce (30): estado por cliente sin duplicar el registro remoto
+INSERT INTO sincronizaciones_salesforce
+    (id_cliente, tipo_registro, id_registro_salesforce, estado_sincronizacion,
+     intentos, ultimo_error, fecha_creacion, fecha_actualizacion, fecha_sincronizacion)
+SELECT
+    c.id_cliente,
+    IF(c.estado_cliente = 'Cliente', 'Contact', 'Lead'),
+    IF(MOD(c.id_cliente, 3) = 0, NULL,
+       CONCAT(IF(c.estado_cliente = 'Cliente', 'SF-CONTACT-', 'SF-LEAD-'), c.id_cliente)),
+    CASE MOD(c.id_cliente, 3) WHEN 0 THEN 'Fallida' WHEN 1 THEN 'Sincronizada' ELSE 'Pendiente' END,
+    CASE MOD(c.id_cliente, 3) WHEN 0 THEN 3 WHEN 1 THEN 1 ELSE 0 END,
+    IF(MOD(c.id_cliente, 3) = 0, 'Fallo simulado de conexión', NULL),
+    DATE_SUB(NOW(), INTERVAL c.id_cliente DAY),
+    DATE_SUB(NOW(), INTERVAL (c.id_cliente - 1) DAY),
+    IF(MOD(c.id_cliente, 3) = 1, DATE_SUB(NOW(), INTERVAL (c.id_cliente - 1) DAY), NULL)
+FROM clientes c
+WHERE c.id_cliente BETWEEN 1 AND 30;
+
 /* ================= TRANSACCIONES ACID ================= */
--- Transacción 1: HU-28 | POST /api/sales | Venta con SAVEPOINT
+-- Transacción 1: HU-26 | POST /api/sales | Venta con SAVEPOINT
 START TRANSACTION;
 INSERT INTO ventas (id_venta, id_cliente, id_vendedor, estado_venta, metodo_pago, total_venta) VALUES (31, 5, 12, 'Pendiente', 'Transferencia', 0);
 INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (31, 15, 5, 160000, 800000);
@@ -890,34 +1078,34 @@ UPDATE ventas SET total_venta = (SELECT SUM(subtotal) FROM detalle_ventas WHERE 
 INSERT INTO auditoria_cambios (tabla, id_registro, campo, valor_anterior, valor_nuevo, usuario_bd) VALUES ('ventas', 31, 'estado_venta', NULL, 'Pendiente', CURRENT_USER());
 COMMIT;
 
--- Transacción 2: HU-25 | POST /api/assignments/reasignar | Reasignar cliente (ROLLBACK completo)
+-- Transacción 2: HU-22 | POST /api/assignments/reasignar | Reasignar cliente (ROLLBACK completo)
 START TRANSACTION;
 UPDATE asignaciones_crm SET estado = 'Finalizada', fecha_fin = NOW() WHERE id_cliente = 19 AND estado = 'Activa';
 INSERT INTO asignaciones_crm (id_cliente, id_vendedor, estado) VALUES (19, 29, 'Activa');
 ROLLBACK;
 
--- Transacción 3: HU-31 | POST /api/sales/cambiar-estado | Convertir prueba (ROLLBACK completo)
+-- Transacción 3: HU-28 | POST /api/sales/cambiar-estado | Convertir prueba (ROLLBACK completo)
 START TRANSACTION;
 UPDATE descargas_prueba SET estado_prueba = 'Convertida' WHERE id_descarga = 2 AND estado_prueba = 'Activa';
 ROLLBACK;
 
--- Transacción 4: HU-05 | POST /api/clients | Cliente con empresa (ROLLBACK completo)
+-- Transacción 4: HU-04 | POST /api/clients | Cliente con empresa (ROLLBACK completo)
 START TRANSACTION;
 INSERT INTO empresas (id_empresa, nombre_empresa, sector_industria, sitio_web) VALUES (31, 'Empresa Prueba SAS','Tecnología','https://www.empresaprueba.co');
 INSERT INTO clientes (id_empresa, nombre_completo, correo_electronico, telefono) VALUES (31, 'Cliente Nuevo Prueba', 'cliente.nuevo.prueba@empresaprueba.co', '+57 300 000 0000');
 ROLLBACK;
 
--- Transacción 5: HU-13 | POST /api/trials | Registrar descarga (COMMIT)
+-- Transacción 5: HU-09 | POST /api/trials | Registrar descarga (COMMIT)
 START TRANSACTION;
 INSERT INTO descargas_prueba (id_cliente, id_producto, fecha_inicio, fecha_fin, estado_prueba) VALUES (1, 4, CURRENT_DATE, DATE_ADD(CURRENT_DATE, INTERVAL 60 DAY), 'Activa');
 COMMIT;
 
--- Transacción 6: HU-26 | POST /api/interactions | Registrar interacción (COMMIT)
+-- Transacción 6: HU-25 | POST /api/interactions | Registrar interacción (COMMIT)
 START TRANSACTION;
 INSERT INTO interacciones (id_asignacion, tipo_interaccion, resultado, notas) VALUES (1, 'Llamada', 'Interesado', 'Llamada de seguimiento: cliente interesado.');
 COMMIT;
 
--- Transacción 7: HU-08 | POST /api/clients/cambiar-estado | Cambiar estado (SAVEPOINT parcial)
+-- Transacción 7: HU-05 | POST /api/clients/cambiar-estado | Cambiar estado (SAVEPOINT parcial)
 START TRANSACTION;
 UPDATE clientes SET estado_cliente = 'Inactivo' WHERE id_cliente = 35;
 SAVEPOINT estado_cambiado;
@@ -926,29 +1114,29 @@ ROLLBACK TO SAVEPOINT estado_cambiado;
 INSERT INTO auditoria_cambios (tabla, id_registro, campo, valor_anterior, valor_nuevo, usuario_bd) VALUES ('clientes', 35, 'estado_cliente', 'Frio', 'Inactivo', CURRENT_USER());
 COMMIT;
 
--- Transacción 8: HU-16 | POST /api/campanas_marketing | Crear campaña (ROLLBACK completo)
+-- Transacción 8: HU-12 | POST /api/campanas_marketing | Crear campaña (ROLLBACK completo)
 START TRANSACTION;
 INSERT INTO campanas_marketing (nombre_campana, descripcion, presupuesto, fecha_inicio, fecha_fin, estado) VALUES ('Campaña Fechas Malas', 'Campaña de prueba con fechas incorrectas.', 10000000, '2026-12-31', '2026-01-01', 'Activa');
 ROLLBACK;
 
--- Transacción 9: HU-23 | POST /api/assignments | Asignar cliente (ROLLBACK completo)
+-- Transacción 9: HU-21 | POST /api/assignments | Asignar cliente (ROLLBACK completo)
 START TRANSACTION;
 INSERT INTO asignaciones_crm (id_cliente, id_vendedor, estado) VALUES (2, 15, 'Activa');
 ROLLBACK;
 
--- Transacción 10: HU-30 | POST /api/sales/actualizar | Editar venta (ROLLBACK completo)
+-- Transacción 10: HU-27 | POST /api/sales/actualizar | Editar venta (ROLLBACK completo)
 START TRANSACTION;
 UPDATE ventas SET metodo_pago = 'Tarjeta de crédito' WHERE id_venta = 1 AND estado_venta = 'Pendiente';
 ROLLBACK;
 
 /* ================= SIMULACIÓN DE ERRORES ================= */
--- Error 1: HU-28 | POST /api/sales | Producto inexistente (falla -> ROLLBACK)
+-- Error 1: HU-26 | POST /api/sales | Producto inexistente (falla -> ROLLBACK)
 START TRANSACTION;
 INSERT INTO ventas (id_venta, id_cliente, id_vendedor, estado_venta, metodo_pago, total_venta) VALUES (32, 5, 12, 'Pendiente', 'PSE', 0);
 INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (32, 99999, 2, 100000, 200000);
 ROLLBACK;
 
--- Error 2: HU-28 | POST /api/sales | Cantidad inválida (falla -> ROLLBACK TO SAVEPOINT y COMMIT)
+-- Error 2: HU-26 | POST /api/sales | Cantidad inválida (falla -> ROLLBACK TO SAVEPOINT y COMMIT)
 START TRANSACTION;
 INSERT INTO ventas (id_venta, id_cliente, id_vendedor, estado_venta, metodo_pago, total_venta) VALUES (33, 5, 12, 'Pendiente', 'Transferencia', 0);
 INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (33, 11, 4, 85000, 340000);
@@ -958,7 +1146,7 @@ ROLLBACK TO SAVEPOINT item_valido;
 UPDATE ventas SET total_venta = (SELECT SUM(subtotal) FROM detalle_ventas WHERE id_venta = 33) WHERE id_venta = 33;
 COMMIT;
 
--- Error 3: HU-05 | POST /api/clients | Correo duplicado (falla -> ROLLBACK)
+-- Error 3: HU-04 | POST /api/clients | Correo duplicado (falla -> ROLLBACK)
 START TRANSACTION;
 INSERT INTO empresas (id_empresa, nombre_empresa, sector_industria, sitio_web) VALUES (31, 'Empresa Prueba Rollback SAS', 'Tecnología', 'https://www.empresaprueba.co');
 INSERT INTO clientes (id_empresa, nombre_completo, correo_electronico, telefono) VALUES (31, 'Cliente Duplicado Prueba', 'tatiana.ospina25@grupodigital.co', '+57 300 000 0000');
@@ -979,4 +1167,8 @@ UNION ALL SELECT 'asignaciones_crm', COUNT(*) FROM asignaciones_crm
 UNION ALL SELECT 'interacciones', COUNT(*) FROM interacciones
 UNION ALL SELECT 'ventas', COUNT(*) FROM ventas
 UNION ALL SELECT 'detalle_ventas', COUNT(*) FROM detalle_ventas
-UNION ALL SELECT 'auditoria_cambios', COUNT(*) FROM auditoria_cambios;
+UNION ALL SELECT 'auditoria_cambios', COUNT(*) FROM auditoria_cambios
+UNION ALL SELECT 'alertas', COUNT(*) FROM alertas
+UNION ALL SELECT 'plantillas_correo', COUNT(*) FROM plantillas_correo
+UNION ALL SELECT 'correos_enviados', COUNT(*) FROM correos_enviados
+UNION ALL SELECT 'sincronizaciones_salesforce', COUNT(*) FROM sincronizaciones_salesforce;

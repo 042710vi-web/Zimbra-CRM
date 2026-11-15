@@ -15,14 +15,14 @@ function dateValue(value, label) {
   return value;
 }
 
-// HU-13: Valida los identificadores antes de iniciar el registro de una prueba.
+// HU-09: Valida los identificadores antes de iniciar el registro de una prueba.
 export async function registerTrial(data = {}, user = {}) {
   const id_cliente = requireId(data.id_cliente, 'id_cliente');
   const id_producto = requireId(data.id_producto, 'id_producto');
   return saveTrial({ id_cliente, id_producto, usuario: user.email });
 }
 
-// HU-14: Consulta pruebas y fechas de vencimiento dentro del ámbito autorizado.
+// HU-10: Consulta pruebas y fechas de vencimiento dentro del ámbito autorizado.
 export async function listTrials(query = {}, user = {}) {
   const estado_prueba = query.estado_prueba
     ? requireOneOf(query.estado_prueba, 'estado_prueba', TRIAL_STATES)
@@ -39,7 +39,7 @@ export async function listTrials(query = {}, user = {}) {
   });
 }
 
-// HU-15: Ejecuta manualmente la actualización diaria de pruebas vencidas.
+// HU-11: Ejecuta manualmente la actualización diaria de pruebas vencidas.
 export async function expireTrialDates(user = {}) {
   return { ...(await expire(user.email || 'administrador')), message: 'Actualización de vencimientos completada.' };
 }

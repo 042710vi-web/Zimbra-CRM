@@ -4,7 +4,7 @@
 import { DataTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
 
-// Tokens temporales para recuperar la contraseña (HU-01). Solo se guarda el hash del token.
+// Tokens temporales de recuperación. Solo se guarda el hash del token; este flujo no está en las 33 historias actualizadas.
 export const RecuperacionClave = sequelize.define('RecuperacionClave', {
   id_recuperacion: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true, field: 'id_recuperacion' },
   id_usuario: { type: DataTypes.INTEGER, allowNull: false, field: 'id_usuario' },

@@ -4,10 +4,10 @@
 import { createCompany, findCompanies } from '../repository/Empresas.repository.js';
 import { optionalText, optionalUrl, requireText } from '../utils/validators.js';
 
-// HU-09: listado para selectores y búsqueda.
+// HU-06: listado para selectores y búsqueda.
 export const listCompanies = (query = {}) => findCompanies(String(query.q || '').trim());
 
-// HU-09: registrar una nueva empresa (el nombre es único).
+// HU-06: registrar una nueva empresa (el nombre es único).
 export async function registerCompany(data = {}) {
   const id = await createCompany({
     nombre_empresa: requireText(data.nombre_empresa, 'El nombre de la empresa', 150),

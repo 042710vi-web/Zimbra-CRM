@@ -43,7 +43,7 @@ export async function createClient(data) {
   });
 }
 
-// HU-06: consulta con búsqueda, filtro por estado y paginación.
+// HU-05: consulta con búsqueda, filtro por estado y paginación.
 export async function findClients({ q, estado, page, limit, offset }) {
   const replacements = { q: q || null, like: `%${q || ''}%`, estado: estado || null, limit, offset };
   const where = `WHERE (:q IS NULL OR c.nombre_completo LIKE :like OR c.correo_electronico LIKE :like OR e.nombre_empresa LIKE :like)
@@ -62,7 +62,7 @@ export async function findClients({ q, estado, page, limit, offset }) {
   return { data: rows, page, limit, total: Number(total), totalPages: Math.max(1, Math.ceil(Number(total) / limit)) };
 }
 
-// HU-07: actualiza los datos de contacto y deja rastro de cada campo modificado (HU-35).
+// HU-05: actualiza los datos de contacto y deja rastro de cada campo modificado (HU-32).
 export async function updateClient(data, usuario) {
   return sequelize.transaction(async (transaction) => {
     const client = await Cliente.findByPk(data.id_cliente, { transaction, lock: transaction.LOCK.UPDATE });
@@ -86,7 +86,7 @@ export async function updateClient(data, usuario) {
   });
 }
 
-// HU-08: el sistema actualiza el estado y finaliza la asignación si el cliente queda Inactivo.
+// HU-05: el sistema actualiza el estado y finaliza la asignación si el cliente queda Inactivo.
 export async function updateClientStatus({ id_cliente, estado_cliente }, usuario) {
   return sequelize.transaction(async (transaction) => {
     const client = await Cliente.findByPk(id_cliente, { transaction, lock: transaction.LOCK.UPDATE });

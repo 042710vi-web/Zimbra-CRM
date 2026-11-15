@@ -7,11 +7,11 @@ import { authenticate } from '../middleware/auth.middleware.js';
 import { allowRoles } from '../middleware/role.middleware.js';
 const router = Router();
 router.use(authenticate);
-// HU-14: Consulta pruebas con filtros por estado, cliente, producto y vencimiento.
+// HU-10: Consulta pruebas con filtros por estado, cliente, producto y vencimiento.
 router.get('/', list);
-// HU-13: Registra una descarga de prueba de 60 días.
+// HU-09: Registra una descarga de prueba de 60 días.
 router.post('/', create);
-// HU-15: Permite al administrador ejecutar la actualización de vencimientos.
+// HU-11: Permite al administrador ejecutar la actualización de vencimientos.
 router.post('/actualizar-vencimientos', allowRoles('Administrador'), updateExpirations);
 /** Pone las direcciones de esta área a disposición de la aplicación. */
 export default router;

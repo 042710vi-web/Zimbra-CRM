@@ -7,7 +7,7 @@ import Field from '../../components/common/Field.jsx';
 import Notice from '../../components/common/Notice.jsx';
 import { formatCurrency } from '../../utils/formatters.js';
 
-// HU-28: registrar una venta con sus productos y cantidades.
+// HU-26: registrar una venta con sus productos y cantidades.
 // Endpoint: POST /api/sales (consumido por ventas.service.js).
 export default function VentasPage({ suggestedClientId }) {
   const { session } = useAuth();

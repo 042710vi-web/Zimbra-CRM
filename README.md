@@ -57,4 +57,4 @@ backend/   API, capas de servicio, repositorios, entidades Sequelize y SQL
 frontend/  aplicación React organizada por páginas, servicios y componentes
 ```
 
-Los flujos iniciales están relacionados en sus comentarios de código con HU-01, HU-05, HU-11, HU-13, HU-23 y HU-28. La validación de acceso y errores también referencia HU-03 y HU-36. Los módulos aún no implementados quedan pendientes de asociar a sus historias.
+Los comentarios de código usan los identificadores de la estructura actualizada de 33 historias. El esquema SQL también incluye las tablas de alertas (HU-11 y HU-17), correo automatizado (HU-18 y HU-19) y sincronización con Salesforce.com (HU-23 y HU-24). Sus carpetas de backend y frontend están creadas para implementar esos módulos después.
