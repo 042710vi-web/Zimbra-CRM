@@ -1167,8 +1167,4 @@ UNION ALL SELECT 'asignaciones_crm', COUNT(*) FROM asignaciones_crm
 UNION ALL SELECT 'interacciones', COUNT(*) FROM interacciones
 UNION ALL SELECT 'ventas', COUNT(*) FROM ventas
 UNION ALL SELECT 'detalle_ventas', COUNT(*) FROM detalle_ventas
-UNION ALL SELECT 'auditoria_cambios', COUNT(*) FROM auditoria_cambios
-UNION ALL SELECT 'alertas', COUNT(*) FROM alertas
-UNION ALL SELECT 'plantillas_correo', COUNT(*) FROM plantillas_correo
-UNION ALL SELECT 'correos_enviados', COUNT(*) FROM correos_enviados
-UNION ALL SELECT 'sincronizaciones_salesforce', COUNT(*) FROM sincronizaciones_salesforce;
+UNION ALL SELECT 'auditoria_cambios', COUNT(*) FROM auditoria_cambios;

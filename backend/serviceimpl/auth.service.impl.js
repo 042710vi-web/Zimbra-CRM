@@ -28,8 +28,8 @@ const RECOVERY_MINUTES = 30;
 const sha256 = (value) =>
   crypto.createHash('sha256').update(value).digest('hex');
 
-// HU-01: valida credenciales y devuelve el token JWT.
-export async function login({ email, password }) {
+// HU-01: inicio de sesión.
+export async function login({ email, password } = {}) {
   if (!email || !password) {
     throw Object.assign(
       new Error('Correo y contraseña son obligatorios.'),
@@ -39,13 +39,28 @@ export async function login({ email, password }) {
 
   const user = await findUserByEmail(email.trim().toLowerCase());
 
-  if (
-    !user ||
-    !user.estado ||
-    !(await bcrypt.compare(password, user.password_hash))
-  ) {
+  if (!user) {
     throw Object.assign(
-      new Error('Credenciales incorrectas.'),
+      new Error('Credenciales inválidas.'),
+      { status: 401 },
+    );
+  }
+
+  if (!user.estado) {
+    throw Object.assign(
+      new Error('La cuenta está deshabilitada.'),
+      { status: 403 },
+    );
+  }
+
+  const passwordCorrect = await bcrypt.compare(
+    password,
+    user.password_hash,
+  );
+
+  if (!passwordCorrect) {
+    throw Object.assign(
+      new Error('Credenciales inválidas.'),
       { status: 401 },
     );
   }
@@ -54,6 +69,7 @@ export async function login({ email, password }) {
     token: signToken(user),
     user: {
       id: user.id_usuario,
+      name: user.nombre,
       email: user.correo_acceso,
       role: user.rol,
       vendorId: user.id_vendedor,
@@ -61,13 +77,13 @@ export async function login({ email, password }) {
   };
 }
 
-// HU-01: cerrar sesión. El cliente elimina su token.
+// HU-01: el frontend elimina el token al cerrar sesión.
 export function logout() {
   return { message: 'Sesión cerrada correctamente.' };
 }
 
 // Solicita recuperar la contraseña.
-// En producción envía el enlace por correo y nunca devuelve el token.
+// El token no se devuelve en producción.
 export async function requestPasswordReset({ email } = {}) {
   const correo = requireEmail(email, 'El correo');
 
@@ -83,14 +99,13 @@ export async function requestPasswordReset({ email } = {}) {
 
   const user = await findUserByEmail(correo);
 
-  // La respuesta es la misma si el correo no existe o la cuenta está inactiva.
   if (!user || !user.estado) {
     return { message };
   }
 
   const token = crypto.randomBytes(32).toString('hex');
-
   const resetUrl = new URL('/restablecer', env.frontendOrigin);
+
   resetUrl.searchParams.set('token', token);
 
   await createRecoveryToken({
@@ -114,7 +129,6 @@ export async function requestPasswordReset({ email } = {}) {
     }
   }
 
-  // Solo en desarrollo se entrega el enlace para poder probar sin SMTP.
   if (env.nodeEnv === 'production') {
     return { message };
   }
@@ -125,7 +139,7 @@ export async function requestPasswordReset({ email } = {}) {
   };
 }
 
-// Cambia la contraseña si el token existe, no ha vencido y no se ha usado.
+// Restablece la contraseña usando un token válido y no vencido.
 export async function resetPassword({ token, password } = {}) {
   const cleanToken = requireText(
     token,
@@ -148,6 +162,7 @@ export async function resetPassword({ token, password } = {}) {
   }
 
   return {
-    message: 'Contraseña actualizada correctamente. Ya puedes iniciar sesión.',
+    message:
+      'Contraseña actualizada correctamente. Ya puedes iniciar sesión.',
   };
 }

@@ -1,10 +1,11 @@
 /**
  * Consulta y guarda en la base de datos la información de empresas.
  */
-import { Op } from 'sequelize';
+import { QueryTypes } from 'sequelize';
+import { sequelize } from '../config/database.js';
 import { Empresa } from '../entity/Empresas.entity.js';
+import { registerChanges } from './auditoria.repository.js';
 
-/** Realiza la consulta o el cambio de información solicitado. */
 export const findCompanies = (q) => Empresa.findAll({
   where: q ? { nombre_empresa: { [Op.like]: `%${q}%` } } : undefined,
   order: [['nombre_empresa', 'ASC']],

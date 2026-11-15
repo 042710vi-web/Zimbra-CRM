@@ -12,4 +12,12 @@ export const env = {
   smtpUser: process.env.SMTP_USER || '',
   smtpPassword: process.env.SMTP_PASSWORD || '',
   smtpFrom: process.env.SMTP_FROM || process.env.SMTP_USER || '',
+    salesforceLoginUrl: process.env.SALESFORCE_LOGIN_URL || '',
+  salesforceClientId: process.env.SALESFORCE_CLIENT_ID || '',
+  salesforceClientSecret: process.env.SALESFORCE_CLIENT_SECRET || '',
+  salesforceRefreshToken: process.env.SALESFORCE_REFRESH_TOKEN || '',
+  salesforceApiVersion: process.env.SALESFORCE_API_VERSION || '',
+  salesforceExternalIdField:
+    process.env.SALESFORCE_EXTERNAL_ID_FIELD || 'CRM_Client_Id__c',
+  salesforceLeadStatus: process.env.SALESFORCE_LEAD_STATUS || '',
 };
