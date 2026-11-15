@@ -6,8 +6,7 @@ import {
   resetPassword,
 } from '../../apicontroller/auth.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { loginAttemptLimiter } from '../middleware/login-attempt.middleware.js';
-
+import { loginAttemptLimiter } from '../middleware/attempt.middleware.js';
 const router = Router();
 
 router.post('/login', loginAttemptLimiter, login);
