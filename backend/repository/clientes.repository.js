@@ -6,7 +6,6 @@ import { sequelize } from '../config/database.js';
 import { Cliente } from '../entity/Clientes.entity.js';
 import { Empresa } from '../entity/Empresas.entity.js';
 import { Asignacion } from '../entity/AsignacionesCrm.entity.js';
-import { Asignacion } from '../entity/asignacion.entity.js';
 import { registerChanges } from './AuditoriaCambios.repository.js';
 
 async function resolveCompanyId(data, transaction) {

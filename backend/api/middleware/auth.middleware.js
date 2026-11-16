@@ -1,5 +1,5 @@
 import { verifyToken } from '../../utils/jwt.js';
-import { findUserSessionById } from '../../repository/auth.repository.js';
+import { findUserSessionById } from '../../repository/RecuperacionClaves.repository.js';
 
 export async function authenticate(req, res, next) {
   const [scheme, token] = (req.headers.authorization || '').split(' ');

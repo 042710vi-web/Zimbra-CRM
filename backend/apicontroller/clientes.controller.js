@@ -3,6 +3,14 @@
  */
 import * as clients from '../service/Clientes.service.js';
 
+export async function detail(req, res, next) {
+  try { res.json(await clients.getClientDetail(req.query)); } catch (error) { next(error); }
+}
+
+export async function createPublicLead(req, res, next) {
+  try { res.status(201).json(await clients.registerPublicLead(req.body)); } catch (error) { next(error); }
+}
+
 export async function create(req, res, next) {
   try {
     res.status(201).json(await clients.registerClient(req.body));

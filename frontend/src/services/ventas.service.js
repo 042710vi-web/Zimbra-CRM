@@ -10,3 +10,6 @@ export function createSale(token, data) {
 export function listSales(token, params = {}) {
   return api(`/sales?${new URLSearchParams(params)}`, { token });
 }
+export const getSaleDetail = (token, id_venta) => api(`/sales/detalle?id_venta=${id_venta}`, { token });
+export const updateSale = (token, body) => api('/sales/actualizar', { method: 'POST', token, body: JSON.stringify(body) });
+export const changeSaleState = (token, body) => api('/sales/cambiar-estado', { method: 'POST', token, body: JSON.stringify(body) });

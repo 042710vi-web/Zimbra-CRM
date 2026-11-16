@@ -5,6 +5,10 @@ import { api } from '../api/client.js';
 export function createAssignment(token, data) {
   return api('/assignments', { method: 'POST', token, body: JSON.stringify(data) });
 }
+export const createAssignmentsBatch = (token, data) => api('/assignments/lote', { method: 'POST', token, body: JSON.stringify(data) });
+export const takeProspect = (token, id_cliente) => api('/assignments/tomar', { method: 'POST', token, body: JSON.stringify({ id_cliente }) });
+export const reassignClient = (token, body) => api('/assignments/reasignar', { method: 'POST', token, body: JSON.stringify(body) });
+export const finishAssignment = (token, id_asignacion) => api('/assignments/finalizar', { method: 'POST', token, body: JSON.stringify({ id_asignacion }) });
 
 // HU-22: consultar asignaciones e historial.
 export function listAssignments(token, params = {}) {

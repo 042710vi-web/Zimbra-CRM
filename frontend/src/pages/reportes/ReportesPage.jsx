@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
-import { getReport } from '../../services/reportes.service.js';
+import { downloadReport, getReport } from '../../services/reportes.service.js';
 
 const REPORTS = [
-  ['sales', 'Ventas'], ['clients', 'Clientes'], ['campaigns', 'Campañas'], ['interactions', 'Interacciones'],
+  ['sales', 'Ventas'], ['clients', 'Clientes'], ['campaigns', 'Campañas'], ['interactions', 'Interacciones'], ['assignments', 'Asignaciones'], ['automation', 'Automatización'],
 ];
 const today = new Date().toISOString().slice(0, 10);
 const monthStart = `${today.slice(0, 7)}-01`;
@@ -25,6 +25,7 @@ export default function ReportesPage() {
     catch (cause) { setError(cause.message); setReport(null); }
     finally { setBusy(false); }
   }
+  async function exportCsv() { try { const blob = await downloadReport(session.token, kind, { desde, hasta }); const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `reporte-${kind}.csv`; anchor.click(); URL.revokeObjectURL(url); } catch (cause) { setError(cause.message); } }
 
   useEffect(() => { load(); }, [session.token]);
   const arrays = report ? Object.entries(report).filter(([, value]) => Array.isArray(value)) : [];
@@ -38,6 +39,7 @@ export default function ReportesPage() {
       <label className="field">Desde<input type="date" value={desde} onChange={(event) => setDesde(event.target.value)} /></label>
       <label className="field">Hasta<input type="date" value={hasta} onChange={(event) => setHasta(event.target.value)} /></label>
       <button className="button primary" disabled={busy}>{busy ? 'Consultando…' : 'Consultar'}</button>
+      <button type="button" className="button" onClick={exportCsv}>Exportar CSV</button>
     </form>
     {error && <div className="notice error" role="alert">{error}</div>}
     {busy && <div className="client-empty">Cargando reporte…</div>}

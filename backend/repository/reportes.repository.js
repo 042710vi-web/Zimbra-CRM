@@ -3,6 +3,7 @@
  */
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
+import { callProcedure } from './storedProcedures.repository.js';
 
 /** Apoya la gestión de reportes mediante una tarea interna del sistema. */
 function addDateRange(where, replacements, fromColumn, toColumn, desde, hasta) {
@@ -12,6 +13,7 @@ function addDateRange(where, replacements, fromColumn, toColumn, desde, hasta) {
 
 /** Realiza la consulta o el cambio de información solicitado. */
 export async function getSalesReport(filters) {
+  const salesProcedure = await callProcedure('sp_reporte_ventas_periodo', [filters.desde, filters.hasta, filters.id_vendedor || null]);
   const where = ['1 = 1'];
   const replacements = {};
   addDateRange(where, replacements, 'v.fecha_venta', 'v.fecha_venta', filters.desde, filters.hasta);
@@ -23,6 +25,9 @@ export async function getSalesReport(filters) {
     replacements.idProducto = filters.id_producto;
   }
   const clause = where.join(' AND ');
+  const ventasFiltradas = filters.estado_venta || filters.id_cliente || filters.id_producto
+    ? await sequelize.query(`SELECT v.id_venta, v.numero_contrato, c.nombre_completo AS cliente, ve.nombre_vendedor AS vendedor, v.fecha_venta, v.estado_venta, v.metodo_pago, v.total_venta, COUNT(d.id_detalle) AS cantidad_productos FROM ventas v JOIN clientes c ON c.id_cliente = v.id_cliente JOIN vendedores ve ON ve.id_vendedor = v.id_vendedor LEFT JOIN detalle_ventas d ON d.id_venta = v.id_venta WHERE ${clause} GROUP BY v.id_venta, v.numero_contrato, c.nombre_completo, ve.nombre_vendedor, v.fecha_venta, v.estado_venta, v.metodo_pago, v.total_venta ORDER BY v.fecha_venta DESC`, { replacements, type: QueryTypes.SELECT })
+    : salesProcedure?.[0] || [];
   const [summary] = await sequelize.query(
     `SELECT COUNT(*) AS cantidad_ventas,
             COALESCE(SUM(CASE WHEN v.estado_venta = 'Completada' THEN v.total_venta ELSE 0 END), 0) AS total_facturado,
@@ -46,7 +51,7 @@ export async function getSalesReport(filters) {
       ORDER BY total_facturado DESC, vd.nombre_vendedor`,
     { replacements, type: QueryTypes.SELECT },
   );
-  return { resumen: summary, por_vendedor: porVendedor };
+  return { resumen: summary, por_vendedor: porVendedor, ventas_periodo: ventasFiltradas };
 }
 
 /** Realiza la consulta o el cambio de información solicitado. */
@@ -161,4 +166,16 @@ export async function getInteractionsReport({ desde, hasta, id_vendedor, umbral_
     { replacements, type: QueryTypes.SELECT },
   );
   return { por_vendedor: porVendedor, calificados_sin_seguimiento: sinSeguimiento, total_seguimiento: Number(totalSeguimiento), asignaciones };
+}
+
+export async function getAssignmentsReport({ id_vendedor }) {
+  return sequelize.query(`SELECT * FROM vw_reporte_asignaciones ${id_vendedor ? 'WHERE id_vendedor = :id_vendedor' : ''} ORDER BY nombre_vendedor`, { replacements: id_vendedor ? { id_vendedor } : {}, type: QueryTypes.SELECT });
+}
+
+export async function getAutomationReport({ desde, hasta }) {
+  const rows = await callProcedure('sp_reporte_estado_correos', [desde, hasta]);
+  const replacements = { desde, hasta };
+  const [alertas] = await sequelize.query('SELECT COUNT(*) AS total_alertas FROM alertas WHERE fecha_creacion >= :desde AND fecha_creacion < DATE_ADD(:hasta, INTERVAL 1 DAY)', { replacements, type: QueryTypes.SELECT });
+  const [salesforce] = await sequelize.query('SELECT COUNT(*) AS total_sincronizaciones, SUM(estado = \'Sincronizado\') AS exitosas, SUM(estado = \'Fallido\') AS fallidas FROM salesforce_sincronizaciones WHERE fecha_creacion >= :desde AND fecha_creacion < DATE_ADD(:hasta, INTERVAL 1 DAY)', { replacements, type: QueryTypes.SELECT });
+  return { por_evento: rows?.[0] || [], alertas, salesforce };
 }

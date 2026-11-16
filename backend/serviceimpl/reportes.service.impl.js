@@ -5,8 +5,10 @@ import {
   getCampaignsReport as campaignsRepository,
   getClientsReport as clientsRepository,
   getInteractionsReport as interactionsRepository,
+  getAssignmentsReport as assignmentsRepository,
+  getAutomationReport as automationRepository,
   getSalesReport as salesRepository,
-} from '../repository/Reportes.repository.js';
+} from '../repository/reportes.repository.js';
 
 /** Apoya la gestión de reportes mediante una tarea interna del sistema. */
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -82,4 +84,16 @@ export async function interactionsReport(query = {}, user) {
     pagination: { page, limit, total: data.total_seguimiento, pages: Math.ceil(data.total_seguimiento / limit) },
     ...data,
   };
+}
+
+export async function assignmentsReport(query = {}, user) {
+  ensureAdmin(user);
+  const id_vendedor = query.id_vendedor ? positiveInt(query.id_vendedor, 'id_vendedor') : undefined;
+  return { data: await assignmentsRepository({ id_vendedor }) };
+}
+
+export async function automationReport(query = {}, user) {
+  ensureAdmin(user);
+  const period = defaultPeriod(query);
+  return { filtros: period, ...(await automationRepository(period)) };
 }

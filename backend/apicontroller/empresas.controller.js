@@ -20,10 +20,3 @@ export async function create(req, res, next) {
   }
 }
 
-export async function update(req, res, next) {
-  try {
-    res.json(await companies.updateCompany(req.body, req.user));
-  } catch (error) {
-    next(error);
-  }
-}

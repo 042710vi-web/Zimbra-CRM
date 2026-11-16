@@ -1,8 +1,6 @@
 import {
   createCompany,
   findCompanies,
-  findCompanyDetail,
-  updateCompany as saveCompany,
 } from '../repository/empresas.repository.js';
 
 import {
@@ -33,24 +31,3 @@ export async function registerCompany(data = {}) {
   };
 }
 
-export async function updateCompany(data = {}, user) {
-  const id_empresa = requireId(data.id_empresa, 'La empresa');
-
-  const clean = {
-    id_empresa,
-    nombre_empresa: requireText(
-      data.nombre_empresa,
-      'El nombre de la empresa',
-      150,
-    ),
-    sector_industria: optionalText(data.sector_industria, 'El sector', 100),
-    sitio_web: optionalUrl(data.sitio_web),
-  };
-
-  await saveCompany(clean, user?.email);
-
-  return {
-    id_empresa,
-    message: 'Empresa actualizada correctamente.',
-  };
-}

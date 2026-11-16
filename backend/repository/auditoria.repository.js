@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { AuditoriaCambio } from '../entity/auditoria-cambio.entity.js';
+import { AuditoriaCambio } from '../entity/AuditoriaCambios.entity.js';
 
 export async function registerChanges({
   tabla,

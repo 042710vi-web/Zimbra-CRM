@@ -27,6 +27,12 @@ const transporter = smtpConfigured
 /** Pone esta operación a disposición de las demás partes del sistema. */
 export const canSendEmail = () => Boolean(transporter);
 
+/** Envía un correo de negocio usando el transporte SMTP configurado. */
+export async function sendBusinessEmail({ to, subject, text, html }) {
+  if (!transporter) throw new Error('El servicio SMTP no está configurado.');
+  return transporter.sendMail({ from: env.smtpFrom, to, subject, text, html });
+}
+
 /** Pone esta operación a disposición de las demás partes del sistema. */
 export async function sendPasswordRecoveryEmail({
   to,

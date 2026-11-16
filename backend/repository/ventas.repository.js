@@ -11,6 +11,7 @@ import { Vendedor } from '../entity/Vendedores.entity.js';
 import { Venta } from '../entity/Ventas.entity.js';
 import { Op, QueryTypes } from 'sequelize';
 import { registerChanges } from './AuditoriaCambios.repository.js';
+import { callProcedure } from './storedProcedures.repository.js';
 
 /** Apoya la gestión de ventas mediante una tarea interna del sistema. */
 const toCents = (amount) => Math.round(Number(amount) * 100);
@@ -44,7 +45,7 @@ export async function listSales({ filters, page, limit, id_vendedor }) {
 }
 
 // El sistema registra ventas solo para clientes atendidos por un vendedor con asignación activa.
-export async function createSale({ id_cliente, id_vendedor, numero_contrato, metodo_pago, items }) {
+async function createSaleLegacy({ id_cliente, id_vendedor, numero_contrato, metodo_pago, items }) {
   return sequelize.transaction(async (transaction) => {
     const lock = { transaction, lock: transaction.LOCK.UPDATE };
     const client = await Cliente.findByPk(id_cliente, lock);
@@ -88,7 +89,7 @@ export async function createSale({ id_cliente, id_vendedor, numero_contrato, met
 }
 
 /** Realiza la consulta o el cambio de información solicitado. */
-export async function updateSale({ id_venta, metodo_pago, items, ownerId }) {
+async function updateSaleLegacy({ id_venta, metodo_pago, items, ownerId }) {
   return sequelize.transaction(async (transaction) => {
     const where = { id_venta, estado_venta: 'Pendiente' };
     if (ownerId) where.id_vendedor = ownerId;
@@ -118,7 +119,7 @@ export async function updateSale({ id_venta, metodo_pago, items, ownerId }) {
 }
 
 // El sistema completa la venta únicamente cuando sus productos y valores son consistentes.
-export async function changeSaleStatus({ id_venta, estado_venta }) {
+async function changeSaleStatusLegacy({ id_venta, estado_venta }) {
   return sequelize.transaction(async (transaction) => {
     const sale = await Venta.findByPk(id_venta, { transaction, lock: transaction.LOCK.UPDATE });
     if (!sale) throw Object.assign(new Error('No existe la venta indicada.'), { status: 404 });
@@ -202,4 +203,53 @@ export async function changeSaleStatus({ id_venta, estado_venta }) {
     });
     return { id_venta, estado_venta, message: 'Estado de venta actualizado.' };
   });
+}
+
+// HU-26: la base calcula precios y totales y guarda la venta con su detalle.
+export async function createSale({ id_cliente, id_vendedor, numero_contrato, metodo_pago, items }) {
+  const [client] = await sequelize.query('SELECT estado_cliente FROM clientes WHERE id_cliente = :id_cliente', { replacements: { id_cliente }, type: QueryTypes.SELECT });
+  if (!client) throw Object.assign(new Error('El cliente indicado no existe.'), { status: 404 });
+  if (['Inactivo', 'Descartado'].includes(client.estado_cliente)) throw Object.assign(new Error('No se puede vender a un cliente inactivo o descartado.'), { status: 409 });
+  const [vendor] = await sequelize.query('SELECT id_vendedor FROM vendedores WHERE id_vendedor = :id_vendedor AND estado = TRUE', { replacements: { id_vendedor }, type: QueryTypes.SELECT });
+  if (!vendor) throw Object.assign(new Error('El vendedor no existe o está inactivo.'), { status: 404 });
+  const [assignment] = await sequelize.query("SELECT id_asignacion FROM asignaciones_crm WHERE id_cliente = :id_cliente AND id_vendedor = :id_vendedor AND estado = 'Activa' LIMIT 1", { replacements: { id_cliente, id_vendedor }, type: QueryTypes.SELECT });
+  if (!assignment) throw Object.assign(new Error('El vendedor requiere una asignación activa con el cliente.'), { status: 409 });
+  await callProcedure('sp_registrar_venta', [id_cliente, id_vendedor, numero_contrato, metodo_pago, JSON.stringify(items)]);
+  return { message: 'Venta registrada correctamente.' };
+}
+
+// HU-27: el procedimiento valida que la venta siga pendiente.
+export async function updateSale({ id_venta, metodo_pago, items, ownerId }) {
+  if (ownerId) {
+    const [sale] = await sequelize.query('SELECT id_venta FROM ventas WHERE id_venta = :id AND id_vendedor = :owner', {
+      replacements: { id: id_venta, owner: ownerId }, type: QueryTypes.SELECT,
+    });
+    if (!sale) throw Object.assign(new Error('La venta no existe o no pertenece al vendedor autenticado.'), { status: 404 });
+  }
+  await callProcedure('sp_actualizar_venta_pendiente', [id_venta, metodo_pago || null, JSON.stringify(items)]);
+  return { id_venta, message: 'Venta pendiente actualizada.' };
+}
+
+// HU-28: completar ejecuta la conversión y actualización de pruebas dentro del procedimiento.
+export async function changeSaleStatus({ id_venta, estado_venta }) {
+  if (estado_venta === 'Completada') {
+    await callProcedure('sp_completar_venta', [id_venta]);
+    return { id_venta, estado_venta, message: 'Venta completada y cliente convertido.' };
+  }
+  const [sale] = await sequelize.query("SELECT id_venta FROM ventas WHERE id_venta = :id AND estado_venta = 'Pendiente'", {
+    replacements: { id: id_venta }, type: QueryTypes.SELECT,
+  });
+  if (!sale) throw Object.assign(new Error('Solo se puede cancelar una venta pendiente.'), { status: 409 });
+  await sequelize.query("UPDATE ventas SET estado_venta = 'Cancelada' WHERE id_venta = :id", { replacements: { id: id_venta } });
+  return { id_venta, estado_venta, message: 'Venta cancelada.' };
+}
+
+export async function getSaleDetail({ id_venta, id_vendedor }) {
+  const replacements = { id_venta };
+  const owner = id_vendedor ? 'AND v.id_vendedor = :id_vendedor' : '';
+  if (id_vendedor) replacements.id_vendedor = id_vendedor;
+  const [sale] = await sequelize.query(`SELECT v.*, c.nombre_completo, ve.nombre_vendedor FROM ventas v JOIN clientes c ON c.id_cliente = v.id_cliente JOIN vendedores ve ON ve.id_vendedor = v.id_vendedor WHERE v.id_venta = :id_venta ${owner}`, { replacements, type: QueryTypes.SELECT });
+  if (!sale) throw Object.assign(new Error('No existe la venta indicada.'), { status: 404 });
+  sale.detalles = await sequelize.query('SELECT d.*, p.nombre_producto FROM detalle_ventas d JOIN productos p ON p.id_producto = d.id_producto WHERE d.id_venta = :id_venta ORDER BY d.id_detalle', { replacements: { id_venta }, type: QueryTypes.SELECT });
+  return sale;
 }

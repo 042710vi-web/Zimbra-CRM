@@ -1,9 +1,10 @@
 /**
  * Recibe las solicitudes de ventas, las entrega al servicio correspondiente y comunica el resultado.
  */
-import { changeSaleState, editSale, getSales, registerSale } from '../service/Ventas.service.js';
+import { changeSaleState, editSale, getSaleDetail, getSales, registerSale } from '../service/ventas.service.js';
 // HU-27: lista ventas con filtros, paginación y detalle.
 export async function list(req, res, next) { try { res.json(await getSales(req.query, req.user)); } catch (error) { next(error); } }
+export async function detail(req, res, next) { try { res.json(await getSaleDetail(req.query, req.user)); } catch (error) { next(error); } }
 // HU-26: crea la venta y su detalle en una transacción.
 export async function create(req, res, next) { try { const body = req.user?.role === 'Vendedor' ? { ...req.body, id_vendedor: req.user.vendorId } : req.body; res.status(201).json(await registerSale(body)); } catch (error) { next(error); } }
 // HU-27: modifica una venta que continúa pendiente.

@@ -1,7 +1,7 @@
 /**
  * Valida los datos y coordina las operaciones necesarias para gestionar interacciones.
  */
-import { createInteraction as saveInteraction, listInteractions } from '../repository/Interacciones.repository.js';
+import { createInteraction as saveInteraction, getClientTimeline as readClientTimeline, listInteractions, updateInteraction as saveInteractionUpdate } from '../repository/interacciones.repository.js';
 /** Apoya la gestión de interacciones mediante una tarea interna del sistema. */
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 /** Apoya la gestión de interacciones mediante una tarea interna del sistema. */
@@ -21,4 +21,17 @@ export async function createInteraction(data = {}, user = {}) {
   if (!allowed.includes(data.tipo_interaccion)) throw fail(`tipo_interaccion debe ser uno de: ${allowed.join(', ')}.`);
   if (typeof data.resultado !== 'string' || !data.resultado.trim()) throw fail('resultado es obligatorio.');
   return saveInteraction({ id_asignacion, tipo_interaccion: data.tipo_interaccion, resultado: data.resultado.trim(), notas: data.notas, id_vendedor: user.role === 'Vendedor' ? positiveId(user.vendorId, 'vendedor') : undefined });
+}
+export async function getTimeline(data = {}, user = {}) {
+  const id_cliente = positiveId(data.id_cliente, 'id_cliente');
+  const id_vendedor = user.role === 'Vendedor' ? positiveId(user.vendorId, 'vendedor') : undefined;
+  return { id_cliente, data: await readClientTimeline({ id_cliente, id_vendedor }) };
+}
+export async function editInteraction(data = {}, user = {}) {
+  const id_interaccion = positiveId(data.id_interaccion, 'id_interaccion');
+  if (data.tipo_interaccion !== undefined && !['Llamada', 'Correo', 'Meeting', 'Alerta Automática'].includes(data.tipo_interaccion)) throw fail('tipo_interaccion no es válido.');
+  if (data.notas !== undefined && typeof data.notas !== 'string') throw fail('notas debe ser texto.');
+  if (data.tipo_interaccion === undefined && data.notas === undefined) throw fail('Envía tipo_interaccion o notas para actualizar.');
+  const id_vendedor = user.role === 'Vendedor' ? positiveId(user.vendorId, 'vendedor') : undefined;
+  return saveInteractionUpdate({ ...data, id_interaccion, id_vendedor });
 }

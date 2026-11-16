@@ -1,7 +1,7 @@
 import { Op, QueryTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
-import { Usuario } from '../entity/usuario.entity.js';
-import { RecuperacionClave } from '../entity/recuperacion-clave.entity.js';
+import { Usuario } from '../entity/Usuarios.entity.js';
+import { RecuperacionClave } from '../entity/RecuperacionClaves.entity.js';
 import { registerChanges } from './auditoria.repository.js';
 
 export async function findUserByEmail(email) {

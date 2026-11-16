@@ -22,6 +22,7 @@ CREATE TABLE clientes (
     fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
     puntaje_total INT DEFAULT 0,
     estado_cliente VARCHAR(50) DEFAULT 'Frio',
+    estado_salesforce ENUM('No requerido','Pendiente','Sincronizado','Fallido') NOT NULL DEFAULT 'No requerido',
     CONSTRAINT chk_estado_cliente CHECK (estado_cliente IN
         ('Frio','Tibio','Calificado','En Negociacion','Cliente','Convertido','Descartado','Inactivo')),
     FOREIGN KEY (id_empresa) REFERENCES empresas(id_empresa)
@@ -243,8 +244,7 @@ CREATE TABLE plantillas_correo (
         (CASE WHEN estado = TRUE THEN evento ELSE NULL END) STORED,
     fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
     fecha_actualizacion DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT uq_plantilla_activa_por_evento UNIQUE (evento_activo),
-    INDEX idx_plantillas_evento_estado (evento, estado)
+    CONSTRAINT uq_plantilla_activa_por_evento UNIQUE (evento_activo)
 );
 
 /* Guarda el resultado, los intentos y la clave de idempotencia de cada
@@ -268,7 +268,6 @@ CREATE TABLE correos_enviados (
     CONSTRAINT chk_intentos_correo CHECK (intentos BETWEEN 0 AND 3),
     FOREIGN KEY (id_cliente) REFERENCES clientes(id_cliente),
     FOREIGN KEY (id_plantilla) REFERENCES plantillas_correo(id_plantilla),
-    INDEX idx_correos_estado_fecha (estado_correo, fecha_creacion),
     INDEX idx_correos_cliente (id_cliente, fecha_creacion)
 );
 
@@ -292,13 +291,32 @@ CREATE TABLE sincronizaciones_salesforce (
     INDEX idx_salesforce_estado_fecha (estado_sincronizacion, fecha_actualizacion)
 );
 
+/* HU-23/HU-24: una fila por sincronización lógica; intentos cuenta las
+   llamadas hechas (máximo inicial + 3 reintentos = 4). */
+CREATE TABLE salesforce_sincronizaciones (
+    id_sincronizacion BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id_cliente INT NOT NULL,
+    objeto_salesforce VARCHAR(30) NOT NULL,
+    operacion ENUM('Crear','Actualizar','Upsert') NOT NULL DEFAULT 'Upsert',
+    estado ENUM('Pendiente','Sincronizado','Fallido') NOT NULL DEFAULT 'Pendiente',
+    intentos TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    salesforce_id VARCHAR(30) NULL,
+    respuesta_salesforce JSON NULL,
+    mensaje_error TEXT NULL,
+    fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_actualizacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT chk_sf_objeto CHECK (objeto_salesforce IN ('Lead','Contact')),
+    CONSTRAINT chk_sf_intentos CHECK (intentos <= 4),
+    CONSTRAINT fk_sf_cliente FOREIGN KEY (id_cliente)
+        REFERENCES clientes(id_cliente)
+        ON UPDATE RESTRICT ON DELETE RESTRICT,
+    INDEX idx_sf_estado_fecha (estado, fecha_creacion),
+    INDEX idx_sf_cliente_fecha (id_cliente, fecha_creacion)
+);
+
 /* ---------------------------------------------------------------------
 2. DATOS SIMULADOS (mínimo 30 registros por tabla)
-Criterios:
-- clientes: 35 registros (reducido para no saturar el script).
-- actividad_web: 150 registros (reducido de 532).
-- El resto de tablas, incluidas las cuatro nuevas: 30 registros cada una.
-- Las llaves foráneas se respetan en el orden de inserción.
 --------------------------------------------------------------------- */
 
 -- 2.1 empresas (30)
@@ -693,7 +711,8 @@ INSERT INTO actividad_web (id_actividad, id_cliente, id_accion, id_campana, fech
 /* Conserva el puntaje que aporta cada actividad en el momento de su registro. */
 UPDATE actividad_web aw
 JOIN acciones_marketing am ON am.id_accion = aw.id_accion
-SET aw.puntaje_otorgado = am.puntaje;
+SET aw.puntaje_otorgado = am.puntaje
+WHERE aw.id_actividad > 0;
 
 -- 2.9 descargas_prueba (30)
 INSERT INTO descargas_prueba (id_descarga, id_cliente, id_producto, fecha_inicio, fecha_fin, estado_prueba) VALUES
@@ -836,7 +855,7 @@ JOIN (
     GROUP BY id_cliente
 ) v ON v.id_cliente = d.id_cliente
 SET d.id_venta = v.id_venta
-WHERE d.estado_prueba = 'Convertida';
+WHERE d.estado_prueba = 'Convertida' AND d.id_descarga > 0;
 
 -- 2.13 detalle_ventas (30)
 INSERT INTO detalle_ventas (id_detalle, id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES
@@ -962,7 +981,14 @@ INSERT INTO auditoria_cambios (id_auditoria, tabla, id_registro, campo, valor_an
 (30,'descargas_prueba',7,'estado_prueba','Activa','Vencida','root@localhost','2026-09-18 10:00:00');
 
 -- Ajuste: total_venta de cada venta = suma de su detalle (los datos simulados no cuadraban)
-UPDATE ventas v SET total_venta = (SELECT SUM(d.subtotal) FROM detalle_ventas d WHERE d.id_venta = v.id_venta);
+UPDATE ventas v
+JOIN (
+    SELECT id_venta, SUM(subtotal) AS total_detalle
+    FROM detalle_ventas
+    GROUP BY id_venta
+) d ON d.id_venta = v.id_venta
+SET v.total_venta = d.total_detalle
+WHERE v.id_venta > 0;
 
 -- 2.16 alertas (30): prospectos calificados, retornos y pruebas por vencer/vencidas
 INSERT INTO alertas
@@ -1064,107 +1090,957 @@ SELECT
 FROM clientes c
 WHERE c.id_cliente BETWEEN 1 AND 30;
 
-/* ================= TRANSACCIONES ACID ================= */
--- Transacción 1: HU-26 | POST /api/sales | Venta con SAVEPOINT
+INSERT INTO salesforce_sincronizaciones
+    (id_cliente,objeto_salesforce,operacion,estado,intentos,salesforce_id,mensaje_error)
+SELECT c.id_cliente,
+       IF(c.estado_cliente='Cliente','Contact','Lead'), 'Upsert',
+       CASE MOD(c.id_cliente,3) WHEN 0 THEN 'Fallido' WHEN 1 THEN 'Sincronizado' ELSE 'Pendiente' END,
+       CASE MOD(c.id_cliente,3) WHEN 0 THEN 4 WHEN 1 THEN 1 ELSE 0 END,
+       IF(MOD(c.id_cliente,3)=0,NULL,CONCAT('SF-',c.id_cliente)),
+       IF(MOD(c.id_cliente,3)=0,'Fallo simulado de conexión',NULL)
+FROM clientes c WHERE c.id_cliente BETWEEN 1 AND 30;
+
+
+/* ================= TRANSACCIONES ACID / RECUPERACIÓN =================
+   Yisel | Endpoints: POST /api/sales, POST /api/clients, POST /api/assignments.
+   Se demuestran COMMIT, ROLLBACK y SAVEPOINT con cambios reversibles;
+   los casos inválidos se rechazan mediante SIGNAL en triggers/procedimientos.
+*/
 START TRANSACTION;
-INSERT INTO ventas (id_venta, id_cliente, id_vendedor, estado_venta, metodo_pago, total_venta) VALUES (31, 5, 12, 'Pendiente', 'Transferencia', 0);
-INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (31, 15, 5, 160000, 800000);
-SAVEPOINT item1_registrado;
-INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (31, 20, 3, 110000, 330000);
-SAVEPOINT item2_registrado;
-INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (31, 24, 2, 480000, 960000);
-ROLLBACK TO SAVEPOINT item2_registrado;
-UPDATE ventas SET total_venta = (SELECT SUM(subtotal) FROM detalle_ventas WHERE id_venta = 31) WHERE id_venta = 31;
-INSERT INTO auditoria_cambios (tabla, id_registro, campo, valor_anterior, valor_nuevo, usuario_bd) VALUES ('ventas', 31, 'estado_venta', NULL, 'Pendiente', CURRENT_USER());
+UPDATE ventas SET metodo_pago = metodo_pago WHERE id_venta = 1;
+SAVEPOINT sp_prueba_venta;
+UPDATE ventas SET metodo_pago = 'Transferencia' WHERE id_venta = 1;
+ROLLBACK TO SAVEPOINT sp_prueba_venta;
+ROLLBACK;
+
+START TRANSACTION;
+SAVEPOINT sp_prueba_cliente;
+UPDATE clientes SET telefono = telefono WHERE id_cliente = 1;
+ROLLBACK TO SAVEPOINT sp_prueba_cliente;
 COMMIT;
 
--- Transacción 2: HU-22 | POST /api/assignments/reasignar | Reasignar cliente (ROLLBACK completo)
-START TRANSACTION;
-UPDATE asignaciones_crm SET estado = 'Finalizada', fecha_fin = NOW() WHERE id_cliente = 19 AND estado = 'Activa';
-INSERT INTO asignaciones_crm (id_cliente, id_vendedor, estado) VALUES (19, 29, 'Activa');
-ROLLBACK;
 
--- Transacción 3: HU-28 | POST /api/sales/cambiar-estado | Convertir prueba (ROLLBACK completo)
-START TRANSACTION;
-UPDATE descargas_prueba SET estado_prueba = 'Convertida' WHERE id_descarga = 2 AND estado_prueba = 'Activa';
-ROLLBACK;
 
--- Transacción 4: HU-04 | POST /api/clients | Cliente con empresa (ROLLBACK completo)
-START TRANSACTION;
-INSERT INTO empresas (id_empresa, nombre_empresa, sector_industria, sitio_web) VALUES (31, 'Empresa Prueba SAS','Tecnología','https://www.empresaprueba.co');
-INSERT INTO clientes (id_empresa, nombre_completo, correo_electronico, telefono) VALUES (31, 'Cliente Nuevo Prueba', 'cliente.nuevo.prueba@empresaprueba.co', '+57 300 000 0000');
-ROLLBACK;
+/* =====================================================================
+   3. EXTENSIONES SQL DE LAS HISTORIAS ASIGNADAS A VIVIANA
+   HU-03 a HU-06, HU-23, HU-24, HU-32 y restricciones de HU-33.
+   Se conservan las tablas y datos ya definidos arriba; solo se agregan
+   el estado de sincronización, su bitácora, triggers y procedimientos.
+   ===================================================================== */
 
--- Transacción 5: HU-09 | POST /api/trials | Registrar descarga (COMMIT)
-START TRANSACTION;
-INSERT INTO descargas_prueba (id_cliente, id_producto, fecha_inicio, fecha_fin, estado_prueba) VALUES (1, 4, CURRENT_DATE, DATE_ADD(CURRENT_DATE, INTERVAL 60 DAY), 'Activa');
-COMMIT;
+/* HU-32: siete triggers concentran las trazas de las historias asignadas.
+   Las inserciones de auditoría son transaccionales con el cambio original. */
+DELIMITER $$
 
--- Transacción 6: HU-25 | POST /api/interactions | Registrar interacción (COMMIT)
-START TRANSACTION;
-INSERT INTO interacciones (id_asignacion, tipo_interaccion, resultado, notas) VALUES (1, 'Llamada', 'Interesado', 'Llamada de seguimiento: cliente interesado.');
-COMMIT;
+/* 1. Clientes: marca Salesforce pendiente y audita cambios de cliente. */
+CREATE TRIGGER trg_clientes_bu_auditoria
+BEFORE UPDATE ON clientes
+FOR EACH ROW
+BEGIN
+    IF NOT (OLD.estado_cliente <=> NEW.estado_cliente)
+       AND NEW.estado_cliente IN ('Calificado','Cliente','Convertido') THEN
+        SET NEW.estado_salesforce = 'Pendiente';
+    END IF;
+    IF NOT (OLD.estado_cliente <=> NEW.estado_cliente) THEN
+        INSERT INTO auditoria_cambios
+            (tabla,id_registro,campo,valor_anterior,valor_nuevo,usuario_bd,fecha_cambio)
+        VALUES ('clientes',OLD.id_cliente,'estado_cliente',OLD.estado_cliente,NEW.estado_cliente,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.puntaje_total <=> NEW.puntaje_total) THEN
+        INSERT INTO auditoria_cambios
+            (tabla,id_registro,campo,valor_anterior,valor_nuevo,usuario_bd,fecha_cambio)
+        VALUES ('clientes',OLD.id_cliente,'puntaje_total',OLD.puntaje_total,NEW.puntaje_total,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.nombre_completo <=> NEW.nombre_completo) THEN
+        INSERT INTO auditoria_cambios
+            (tabla,id_registro,campo,valor_anterior,valor_nuevo,usuario_bd,fecha_cambio)
+        VALUES ('clientes',OLD.id_cliente,'nombre_completo',OLD.nombre_completo,NEW.nombre_completo,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.correo_electronico <=> NEW.correo_electronico) THEN
+        INSERT INTO auditoria_cambios
+            (tabla,id_registro,campo,valor_anterior,valor_nuevo,usuario_bd,fecha_cambio)
+        VALUES ('clientes',OLD.id_cliente,'correo_electronico',OLD.correo_electronico,NEW.correo_electronico,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.telefono <=> NEW.telefono) THEN
+        INSERT INTO auditoria_cambios
+            (tabla,id_registro,campo,valor_anterior,valor_nuevo,usuario_bd,fecha_cambio)
+        VALUES ('clientes',OLD.id_cliente,'telefono',OLD.telefono,NEW.telefono,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.id_empresa <=> NEW.id_empresa) THEN
+        INSERT INTO auditoria_cambios
+            (tabla,id_registro,campo,valor_anterior,valor_nuevo,usuario_bd,fecha_cambio)
+        VALUES ('clientes',OLD.id_cliente,'id_empresa',OLD.id_empresa,NEW.id_empresa,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.estado_salesforce <=> NEW.estado_salesforce) THEN
+        INSERT INTO auditoria_cambios
+            (tabla,id_registro,campo,valor_anterior,valor_nuevo,usuario_bd,fecha_cambio)
+        VALUES ('clientes',OLD.id_cliente,'estado_salesforce',OLD.estado_salesforce,NEW.estado_salesforce,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+END$$
 
--- Transacción 7: HU-05 | POST /api/clients/cambiar-estado | Cambiar estado (SAVEPOINT parcial)
-START TRANSACTION;
-UPDATE clientes SET estado_cliente = 'Inactivo' WHERE id_cliente = 35;
-SAVEPOINT estado_cambiado;
-UPDATE asignaciones_crm SET estado = 'Finalizada', fecha_fin = NOW() WHERE id_cliente = 35 AND estado = 'Activa';
-ROLLBACK TO SAVEPOINT estado_cambiado;
-INSERT INTO auditoria_cambios (tabla, id_registro, campo, valor_anterior, valor_nuevo, usuario_bd) VALUES ('clientes', 35, 'estado_cliente', 'Frio', 'Inactivo', CURRENT_USER());
-COMMIT;
+/* 2. Ventas: conserva cambios de estado y valores comerciales. */
+CREATE TRIGGER trg_ventas_au_auditoria
+AFTER UPDATE ON ventas
+FOR EACH ROW
+BEGIN
+    IF NOT (OLD.estado_venta <=> NEW.estado_venta) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'ventas',NEW.id_venta,'estado_venta',OLD.estado_venta,NEW.estado_venta,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.total_venta <=> NEW.total_venta) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'ventas',NEW.id_venta,'total_venta',OLD.total_venta,NEW.total_venta,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.metodo_pago <=> NEW.metodo_pago) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'ventas',NEW.id_venta,'metodo_pago',OLD.metodo_pago,NEW.metodo_pago,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+END$$
 
--- Transacción 8: HU-12 | POST /api/campanas_marketing | Crear campaña (ROLLBACK completo)
-START TRANSACTION;
-INSERT INTO campanas_marketing (nombre_campana, descripcion, presupuesto, fecha_inicio, fecha_fin, estado) VALUES ('Campaña Fechas Malas', 'Campaña de prueba con fechas incorrectas.', 10000000, '2026-12-31', '2026-01-01', 'Activa');
-ROLLBACK;
+/* 3. Asignaciones: registra reasignación, finalización y vendedor. */
+CREATE TRIGGER trg_asignaciones_au_auditoria
+AFTER UPDATE ON asignaciones_crm
+FOR EACH ROW
+BEGIN
+    IF NOT (OLD.estado <=> NEW.estado) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'asignaciones_crm',NEW.id_asignacion,'estado',OLD.estado,NEW.estado,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.id_vendedor <=> NEW.id_vendedor) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'asignaciones_crm',NEW.id_asignacion,'id_vendedor',OLD.id_vendedor,NEW.id_vendedor,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.fecha_fin <=> NEW.fecha_fin) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'asignaciones_crm',NEW.id_asignacion,'fecha_fin',OLD.fecha_fin,NEW.fecha_fin,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+END$$
 
--- Transacción 9: HU-21 | POST /api/assignments | Asignar cliente (ROLLBACK completo)
-START TRANSACTION;
-INSERT INTO asignaciones_crm (id_cliente, id_vendedor, estado) VALUES (2, 15, 'Activa');
-ROLLBACK;
+/* 4. Interacciones: deja rastro de correcciones a seguimientos. */
+CREATE TRIGGER trg_interacciones_au_auditoria
+AFTER UPDATE ON interacciones
+FOR EACH ROW
+BEGIN
+    IF NOT (OLD.resultado <=> NEW.resultado) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'interacciones',NEW.id_interaccion,'resultado',OLD.resultado,NEW.resultado,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.notas <=> NEW.notas) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'interacciones',NEW.id_interaccion,'notas',OLD.notas,NEW.notas,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+END$$
 
--- Transacción 10: HU-27 | POST /api/sales/actualizar | Editar venta (ROLLBACK completo)
-START TRANSACTION;
-UPDATE ventas SET metodo_pago = 'Tarjeta de crédito' WHERE id_venta = 1 AND estado_venta = 'Pendiente';
-ROLLBACK;
+/* 5. Pruebas: audita cambios de estado y fecha de vencimiento. */
+CREATE TRIGGER trg_descargas_au_auditoria
+AFTER UPDATE ON descargas_prueba
+FOR EACH ROW
+BEGIN
+    IF NOT (OLD.estado_prueba <=> NEW.estado_prueba) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'descargas_prueba',NEW.id_descarga,'estado_prueba',OLD.estado_prueba,NEW.estado_prueba,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.fecha_fin <=> NEW.fecha_fin) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'descargas_prueba',NEW.id_descarga,'fecha_fin',OLD.fecha_fin,NEW.fecha_fin,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+END$$
 
-/* ================= SIMULACIÓN DE ERRORES ================= */
--- Error 1: HU-26 | POST /api/sales | Producto inexistente (falla -> ROLLBACK)
-START TRANSACTION;
-INSERT INTO ventas (id_venta, id_cliente, id_vendedor, estado_venta, metodo_pago, total_venta) VALUES (32, 5, 12, 'Pendiente', 'PSE', 0);
-INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (32, 99999, 2, 100000, 200000);
-ROLLBACK;
+/* 6. Productos: audita activación y cambios de precio. */
+CREATE TRIGGER trg_productos_au_auditoria
+AFTER UPDATE ON productos
+FOR EACH ROW
+BEGIN
+    IF NOT (OLD.estado <=> NEW.estado) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'productos',NEW.id_producto,'estado',OLD.estado,NEW.estado,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.precio <=> NEW.precio) THEN
+        INSERT INTO auditoria_cambios VALUES (NULL,'productos',NEW.id_producto,'precio',OLD.precio,NEW.precio,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+END$$
 
--- Error 2: HU-26 | POST /api/sales | Cantidad inválida (falla -> ROLLBACK TO SAVEPOINT y COMMIT)
-START TRANSACTION;
-INSERT INTO ventas (id_venta, id_cliente, id_vendedor, estado_venta, metodo_pago, total_venta) VALUES (33, 5, 12, 'Pendiente', 'Transferencia', 0);
-INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (33, 11, 4, 85000, 340000);
-SAVEPOINT item_valido;
-INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (33, 11, 0, 85000, 0);
-ROLLBACK TO SAVEPOINT item_valido;
-UPDATE ventas SET total_venta = (SELECT SUM(subtotal) FROM detalle_ventas WHERE id_venta = 33) WHERE id_venta = 33;
-COMMIT;
+/* 7. Salesforce: al cambiar el resultado actualiza el cliente y audita. */
+CREATE TRIGGER trg_salesforce_au_estado_auditoria
+AFTER UPDATE ON salesforce_sincronizaciones
+FOR EACH ROW
+BEGIN
+    IF NOT (OLD.estado <=> NEW.estado) THEN
+        UPDATE clientes
+           SET estado_salesforce = CASE NEW.estado
+               WHEN 'Sincronizado' THEN 'Sincronizado'
+               WHEN 'Fallido' THEN 'Fallido'
+               ELSE 'Pendiente'
+           END
+         WHERE id_cliente = NEW.id_cliente;
+        INSERT INTO auditoria_cambios VALUES
+        (NULL,'salesforce_sincronizaciones',NEW.id_sincronizacion,'estado',OLD.estado,NEW.estado,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.intentos <=> NEW.intentos) THEN
+        INSERT INTO auditoria_cambios VALUES
+        (NULL,'salesforce_sincronizaciones',NEW.id_sincronizacion,'intentos',OLD.intentos,NEW.intentos,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.operacion <=> NEW.operacion) THEN
+        INSERT INTO auditoria_cambios VALUES
+        (NULL,'salesforce_sincronizaciones',NEW.id_sincronizacion,'operacion',OLD.operacion,NEW.operacion,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.salesforce_id <=> NEW.salesforce_id) THEN
+        INSERT INTO auditoria_cambios VALUES
+        (NULL,'salesforce_sincronizaciones',NEW.id_sincronizacion,'salesforce_id',OLD.salesforce_id,NEW.salesforce_id,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+    IF NOT (OLD.mensaje_error <=> NEW.mensaje_error) THEN
+        INSERT INTO auditoria_cambios VALUES
+        (NULL,'salesforce_sincronizaciones',NEW.id_sincronizacion,'mensaje_error',OLD.mensaje_error,NEW.mensaje_error,COALESCE(@zimbra_actor,CURRENT_USER()),NOW());
+    END IF;
+END$$
 
--- Error 3: HU-04 | POST /api/clients | Correo duplicado (falla -> ROLLBACK)
-START TRANSACTION;
-INSERT INTO empresas (id_empresa, nombre_empresa, sector_industria, sitio_web) VALUES (31, 'Empresa Prueba Rollback SAS', 'Tecnología', 'https://www.empresaprueba.co');
-INSERT INTO clientes (id_empresa, nombre_completo, correo_electronico, telefono) VALUES (31, 'Cliente Duplicado Prueba', 'tatiana.ospina25@grupodigital.co', '+57 300 000 0000');
-ROLLBACK;
+/* Procedimientos almacenados (8). Las operaciones de escritura usan
+   transacción y rollback automático ante cualquier error SQL. */
+CREATE PROCEDURE sp_registrar_cliente(
+    IN p_id_empresa INT, IN p_nombre VARCHAR(150),
+    IN p_correo VARCHAR(100), IN p_telefono VARCHAR(50)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    IF p_nombre IS NULL OR TRIM(p_nombre)='' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El nombre del cliente es obligatorio.';
+    END IF;
+    IF p_correo IS NULL OR TRIM(p_correo)='' OR p_correo NOT REGEXP '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El correo electrónico no es válido.';
+    END IF;
+    START TRANSACTION;
+    INSERT INTO clientes(id_empresa,nombre_completo,correo_electronico,telefono,puntaje_total,estado_cliente)
+    VALUES(p_id_empresa,TRIM(p_nombre),LOWER(TRIM(p_correo)),NULLIF(TRIM(p_telefono),''),0,'Frio');
+    COMMIT;
+    SELECT LAST_INSERT_ID() AS id_cliente;
+END$$
 
-/* ================= VERIFICACIÓN ================= */
-SELECT 'empresas' AS tabla, COUNT(*) AS registros FROM empresas
-UNION ALL SELECT 'clientes', COUNT(*) FROM clientes
-UNION ALL SELECT 'vendedores', COUNT(*) FROM vendedores
-UNION ALL SELECT 'usuarios', COUNT(*) FROM usuarios
-UNION ALL SELECT 'recuperacion_claves', COUNT(*) FROM recuperacion_claves
-UNION ALL SELECT 'productos', COUNT(*) FROM productos
-UNION ALL SELECT 'campanas_marketing', COUNT(*) FROM campanas_marketing
-UNION ALL SELECT 'acciones_marketing', COUNT(*) FROM acciones_marketing
-UNION ALL SELECT 'actividad_web', COUNT(*) FROM actividad_web
-UNION ALL SELECT 'descargas_prueba', COUNT(*) FROM descargas_prueba
-UNION ALL SELECT 'asignaciones_crm', COUNT(*) FROM asignaciones_crm
-UNION ALL SELECT 'interacciones', COUNT(*) FROM interacciones
-UNION ALL SELECT 'ventas', COUNT(*) FROM ventas
-UNION ALL SELECT 'detalle_ventas', COUNT(*) FROM detalle_ventas
-UNION ALL SELECT 'auditoria_cambios', COUNT(*) FROM auditoria_cambios;
+CREATE PROCEDURE sp_listar_clientes(
+    IN p_busqueda VARCHAR(150), IN p_estado VARCHAR(50),
+    IN p_limite INT, IN p_desplazamiento INT
+)
+BEGIN
+    DECLARE v_limite INT DEFAULT 50;
+    DECLARE v_desplazamiento INT DEFAULT 0;
+    SET v_limite=LEAST(GREATEST(COALESCE(p_limite,50),1),200);
+    SET v_desplazamiento=GREATEST(COALESCE(p_desplazamiento,0),0);
+    SELECT c.id_cliente,c.nombre_completo,c.correo_electronico,c.telefono,
+           c.estado_cliente,c.puntaje_total,c.fecha_registro,e.nombre_empresa
+    FROM clientes c LEFT JOIN empresas e ON e.id_empresa=c.id_empresa
+    WHERE (p_busqueda IS NULL OR p_busqueda='' OR
+           c.nombre_completo LIKE CONCAT('%',p_busqueda,'%') OR
+           c.correo_electronico LIKE CONCAT('%',p_busqueda,'%'))
+      AND (p_estado IS NULL OR p_estado='' OR c.estado_cliente=p_estado)
+    ORDER BY c.fecha_registro DESC,c.id_cliente DESC
+    LIMIT v_desplazamiento,v_limite;
+END$$
+
+CREATE PROCEDURE sp_actualizar_cliente(
+    IN p_id_cliente INT, IN p_id_empresa INT,
+    IN p_nombre VARCHAR(150), IN p_correo VARCHAR(100),
+    IN p_telefono VARCHAR(50)
+)
+BEGIN
+    DECLARE v_existe INT DEFAULT NULL;
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    IF p_nombre IS NULL OR TRIM(p_nombre)='' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El nombre del cliente es obligatorio.';
+    END IF;
+    IF p_correo IS NULL OR TRIM(p_correo)='' OR p_correo NOT REGEXP '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El correo electrónico no es válido.';
+    END IF;
+    START TRANSACTION;
+    SELECT id_cliente INTO v_existe FROM clientes WHERE id_cliente=p_id_cliente FOR UPDATE;
+    IF v_existe IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El cliente indicado no existe.';
+    END IF;
+    UPDATE clientes
+       SET id_empresa=p_id_empresa,nombre_completo=TRIM(p_nombre),
+           correo_electronico=LOWER(TRIM(p_correo)),telefono=NULLIF(TRIM(p_telefono),'')
+     WHERE id_cliente=p_id_cliente;
+    COMMIT;
+    SELECT p_id_cliente AS id_cliente;
+END$$
+
+CREATE PROCEDURE sp_cambiar_estado_cliente(IN p_id_cliente INT, IN p_estado VARCHAR(50))
+BEGIN
+    DECLARE v_existe INT DEFAULT NULL;
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    IF p_estado NOT IN ('Frio','Tibio','Calificado','En Negociacion','Cliente','Convertido','Descartado','Inactivo') THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El estado del cliente no está permitido.';
+    END IF;
+    START TRANSACTION;
+    SELECT id_cliente INTO v_existe FROM clientes WHERE id_cliente=p_id_cliente FOR UPDATE;
+    IF v_existe IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El cliente indicado no existe.';
+    END IF;
+    UPDATE clientes SET estado_cliente=p_estado WHERE id_cliente=p_id_cliente;
+    COMMIT;
+    SELECT p_id_cliente AS id_cliente,p_estado AS estado_cliente;
+END$$
+
+CREATE PROCEDURE sp_registrar_empresa(
+    IN p_nombre VARCHAR(150), IN p_sector VARCHAR(100), IN p_sitio_web VARCHAR(150)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+    IF p_nombre IS NULL OR TRIM(p_nombre)='' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El nombre de la empresa es obligatorio.';
+    END IF;
+    IF p_sitio_web IS NOT NULL AND TRIM(p_sitio_web)<>'' AND
+       TRIM(p_sitio_web) NOT LIKE 'http://%' AND TRIM(p_sitio_web) NOT LIKE 'https://%' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El sitio web debe iniciar con http:// o https://.';
+    END IF;
+    START TRANSACTION;
+    INSERT INTO empresas(nombre_empresa,sector_industria,sitio_web)
+    VALUES(TRIM(p_nombre),NULLIF(TRIM(p_sector),''),NULLIF(TRIM(p_sitio_web),''));
+    COMMIT;
+    SELECT LAST_INSERT_ID() AS id_empresa;
+END$$
+
+CREATE PROCEDURE sp_detalle_empresa(IN p_id_empresa INT)
+BEGIN
+    SELECT e.id_empresa,e.nombre_empresa,e.sector_industria,e.sitio_web,
+           COUNT(DISTINCT c.id_cliente) AS total_clientes,
+           COUNT(DISTINCT CASE WHEN v.estado_venta='Completada' THEN v.id_venta END) AS ventas_completadas
+    FROM empresas e
+    LEFT JOIN clientes c ON c.id_empresa=e.id_empresa
+    LEFT JOIN ventas v ON v.id_cliente=c.id_cliente
+    WHERE e.id_empresa=p_id_empresa
+    GROUP BY e.id_empresa,e.nombre_empresa,e.sector_industria,e.sitio_web;
+    SELECT c.id_cliente,c.nombre_completo,c.correo_electronico,c.estado_cliente
+    FROM clientes c WHERE c.id_empresa=p_id_empresa
+    ORDER BY c.nombre_completo;
+END$$
+
+CREATE PROCEDURE sp_consultar_auditoria(
+    IN p_tabla VARCHAR(50), IN p_desde DATETIME, IN p_hasta DATETIME,
+    IN p_limite INT, IN p_desplazamiento INT
+)
+BEGIN
+    DECLARE v_limite INT DEFAULT 100;
+    DECLARE v_desplazamiento INT DEFAULT 0;
+    IF p_desde IS NOT NULL AND p_hasta IS NOT NULL AND p_desde>p_hasta THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El rango de fechas de auditoría no es válido.';
+    END IF;
+    SET v_limite=LEAST(GREATEST(COALESCE(p_limite,100),1),500);
+    SET v_desplazamiento=GREATEST(COALESCE(p_desplazamiento,0),0);
+    SELECT id_auditoria,tabla,id_registro,campo,valor_anterior,valor_nuevo,usuario_bd,fecha_cambio
+    FROM auditoria_cambios
+    WHERE (p_tabla IS NULL OR p_tabla='' OR tabla=p_tabla)
+      AND (p_desde IS NULL OR fecha_cambio>=p_desde)
+      AND (p_hasta IS NULL OR fecha_cambio<=p_hasta)
+    ORDER BY fecha_cambio ASC,id_auditoria ASC
+    LIMIT v_desplazamiento,v_limite;
+END$$
+
+CREATE PROCEDURE sp_consultar_sincronizaciones_salesforce(
+    IN p_estado VARCHAR(20), IN p_id_cliente INT,
+    IN p_desde DATETIME, IN p_hasta DATETIME,
+    IN p_limite INT, IN p_desplazamiento INT
+)
+BEGIN
+    DECLARE v_limite INT DEFAULT 100;
+    DECLARE v_desplazamiento INT DEFAULT 0;
+    IF p_desde IS NOT NULL AND p_hasta IS NOT NULL AND p_desde>p_hasta THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El rango de fechas de sincronización no es válido.';
+    END IF;
+    SET v_limite=LEAST(GREATEST(COALESCE(p_limite,100),1),500);
+    SET v_desplazamiento=GREATEST(COALESCE(p_desplazamiento,0),0);
+    SELECT s.id_sincronizacion,s.id_cliente,c.nombre_completo,c.correo_electronico,
+           s.objeto_salesforce,s.operacion,s.estado,s.intentos,s.salesforce_id,
+           s.respuesta_salesforce,s.mensaje_error,s.fecha_creacion,s.fecha_actualizacion
+    FROM salesforce_sincronizaciones s
+    INNER JOIN clientes c ON c.id_cliente=s.id_cliente
+    WHERE (p_estado IS NULL OR p_estado='' OR s.estado=p_estado)
+      AND (p_id_cliente IS NULL OR s.id_cliente=p_id_cliente)
+      AND (p_desde IS NULL OR s.fecha_creacion>=p_desde)
+      AND (p_hasta IS NULL OR s.fecha_creacion<=p_hasta)
+    ORDER BY s.fecha_creacion DESC,s.id_sincronizacion DESC
+    LIMIT v_desplazamiento,v_limite;
+END$$
+
+DELIMITER ;
+
+-- Bloque Yisel Historias de usuario 18 a 22 y de 25 a 30
+
+-- TRIGGERS
+DELIMITER $$
+
+-- ---------------------------------------------------------------------
+-- TRIGGER 1: HU-26 – Validación de producto vendible al insertar detalle
+-- Impide vender licencias gratuitas/prueba o productos inactivos.
+-- ---------------------------------------------------------------------
+CREATE TRIGGER trg_detalle_venta
+BEFORE INSERT ON detalle_ventas
+FOR EACH ROW
+BEGIN
+    DECLARE v_tipo_licencia VARCHAR(50);
+    DECLARE v_estado_producto BOOLEAN;
+
+    SELECT tipo_licencia, estado INTO v_tipo_licencia, v_estado_producto
+    FROM productos WHERE id_producto = NEW.id_producto;
+
+    IF v_tipo_licencia IN ('Gratuita', 'Prueba 60 dias') THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'No se pueden vender licencias gratuitas o de prueba.';
+    END IF;
+
+    IF v_estado_producto = FALSE THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'El producto está inactivo y no puede venderse.';
+    END IF;
+END$$
+
+-- ---------------------------------------------------------------------
+-- TRIGGER 2: HU-27 / HU-28 – Auditoría de cambios críticos en ventas
+-- Registra cambios de estado, método de pago y total.
+-- ---------------------------------------------------------------------
+CREATE TRIGGER trg_ventas
+AFTER UPDATE ON ventas
+FOR EACH ROW
+BEGIN
+    IF OLD.estado_venta <> NEW.estado_venta THEN
+        INSERT INTO auditoria_cambios (tabla, id_registro, campo, valor_anterior, valor_nuevo, usuario_bd, fecha_cambio)
+        VALUES ('ventas', NEW.id_venta, 'estado_venta', OLD.estado_venta, NEW.estado_venta, CURRENT_USER(), NOW());
+    END IF;
+    IF OLD.total_venta <> NEW.total_venta THEN
+        INSERT INTO auditoria_cambios (tabla, id_registro, campo, valor_anterior, valor_nuevo, usuario_bd, fecha_cambio)
+        VALUES ('ventas', NEW.id_venta, 'total_venta', OLD.total_venta, NEW.total_venta, CURRENT_USER(), NOW());
+    END IF;
+    IF OLD.metodo_pago <> NEW.metodo_pago THEN
+        INSERT INTO auditoria_cambios (tabla, id_registro, campo, valor_anterior, valor_nuevo, usuario_bd, fecha_cambio)
+        VALUES ('ventas', NEW.id_venta, 'metodo_pago', OLD.metodo_pago, NEW.metodo_pago, CURRENT_USER(), NOW());
+    END IF;
+END$$
+
+-- ---------------------------------------------------------------------
+-- TRIGGER 3: HU-28 – Conversión automática del cliente al completar venta
+-- Cuando una venta pasa a 'Completada', el cliente pasa a estado 'Cliente'
+-- y sus pruebas activas se marcan como 'Convertidas'.
+-- ---------------------------------------------------------------------
+CREATE TRIGGER trg_conversion_ventas_
+AFTER UPDATE ON ventas
+FOR EACH ROW
+BEGIN
+    IF NEW.estado_venta = 'Completada' AND OLD.estado_venta <> 'Completada' THEN
+        UPDATE clientes SET estado_cliente = 'Cliente' WHERE id_cliente = NEW.id_cliente;
+        UPDATE descargas_prueba
+        SET estado_prueba = 'Convertida', id_venta = NEW.id_venta
+        WHERE id_cliente = NEW.id_cliente AND estado_prueba = 'Activa';
+    END IF;
+END$$
+
+-- ---------------------------------------------------------------------
+-- TRIGGER 4: HU-22 – Auditoría de reasignaciones CRM
+-- Registra cambios de vendedor o estado en asignaciones_crm.
+-- ---------------------------------------------------------------------
+CREATE TRIGGER trg_reasignaciones_CRM
+AFTER UPDATE ON asignaciones_crm
+FOR EACH ROW
+BEGIN
+    IF OLD.id_vendedor <> NEW.id_vendedor OR OLD.estado <> NEW.estado THEN
+        INSERT INTO auditoria_cambios (tabla, id_registro, campo, valor_anterior, valor_nuevo, usuario_bd, fecha_cambio)
+        VALUES ('asignaciones_crm', NEW.id_asignacion, 'reasignacion',
+                CONCAT('Vendedor:', OLD.id_vendedor, ', Estado:', OLD.estado),
+                CONCAT('Vendedor:', NEW.id_vendedor, ', Estado:', NEW.estado),
+                CURRENT_USER(), NOW());
+    END IF;
+END$$
+
+-- ---------------------------------------------------------------------
+-- TRIGGER 5: HU-25 – Bloquea interacciones en asignaciones finalizadas
+-- ---------------------------------------------------------------------
+CREATE TRIGGER trg_bloqueo_interacciones
+BEFORE INSERT ON interacciones
+FOR EACH ROW
+BEGIN
+    DECLARE v_estado_asignacion VARCHAR(20);
+    SELECT estado INTO v_estado_asignacion FROM asignaciones_crm WHERE id_asignacion = NEW.id_asignacion;
+    IF v_estado_asignacion <> 'Activa' THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'No se pueden registrar interacciones en asignaciones finalizadas.';
+    END IF;
+END$$
+
+-- ---------------------------------------------------------------------
+-- TRIGGER 6: HU-18 – Protege la plantilla vigente por evento.
+-- La activación desactiva la anterior dentro de la transacción del servicio;
+-- este trigger rechaza cualquier segunda plantilla activa.
+-- ---------------------------------------------------------------------
+CREATE TRIGGER trg_plantillas_asignacion
+BEFORE UPDATE ON plantillas_correo
+FOR EACH ROW
+BEGIN
+    IF NEW.estado = TRUE AND OLD.estado = FALSE AND EXISTS (
+        SELECT 1 FROM plantillas_correo pc
+        WHERE pc.evento = NEW.evento AND pc.id_plantilla <> NEW.id_plantilla AND pc.estado = TRUE
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Ya existe una plantilla activa para este evento.';
+    END IF;
+END$$
+
+-- ---------------------------------------------------------------------
+-- TRIGGER 7: HU-19 – Control de reintentos de correos automáticos
+-- Incrementa el contador de intentos al fallar y bloquea si supera 3.
+-- ---------------------------------------------------------------------
+CREATE TRIGGER trg_envio_correos
+BEFORE UPDATE ON correos_enviados
+FOR EACH ROW
+BEGIN
+    IF NEW.estado_correo = 'Fallido' AND OLD.estado_correo <> 'Fallido' THEN
+        SET NEW.intentos = OLD.intentos + 1;
+        IF NEW.intentos > 3 THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'Límite de 3 reintentos alcanzado para este correo.';
+        END IF;
+    END IF;
+END$$
+
+-- IMPLEMENTACION DE UDF
+-- FUNCTION 1: HU-29 – Total de ventas completadas por vendedor
+CREATE FUNCTION fn_total_ventas_vendedor(p_id_vendedor INT)
+RETURNS DECIMAL(12,2) DETERMINISTIC READS SQL DATA
+BEGIN
+    DECLARE v_total DECIMAL(12,2);
+    SELECT COALESCE(SUM(total_venta), 0) INTO v_total FROM ventas
+    WHERE id_vendedor = p_id_vendedor AND estado_venta = 'Completada';
+    RETURN v_total;
+END$$
+
+-- FUNCTION 2: HU-29 – Ticket promedio de ventas en un periodo
+CREATE FUNCTION fn_ticket_promedio_ventas(p_fecha_inicio DATE, p_fecha_fin DATE)
+RETURNS DECIMAL(10,2) DETERMINISTIC READS SQL DATA
+BEGIN
+    DECLARE v_promedio DECIMAL(10,2);
+    SELECT COALESCE(AVG(total_venta), 0) INTO v_promedio FROM ventas
+    WHERE estado_venta = 'Completada' AND fecha_venta >= p_fecha_inicio
+      AND fecha_venta < DATE_ADD(p_fecha_fin, INTERVAL 1 DAY);
+    RETURN v_promedio;
+END$$
+
+-- FUNCTION 3: HU-29 – Contar ventas pendientes de un cliente
+CREATE FUNCTION fn_contar_ventas_pendientes_cliente(p_id_cliente INT)
+RETURNS INT DETERMINISTIC READS SQL DATA
+BEGIN
+    DECLARE v_count INT;
+    SELECT COUNT(*) INTO v_count FROM ventas
+    WHERE id_cliente = p_id_cliente AND estado_venta = 'Pendiente';
+    RETURN v_count;
+END$$
+
+-- FUNCTION 4: HU-29 – Valor proyectado de ventas pendientes por vendedor
+CREATE FUNCTION fn_valor_proyectado_vendedor(p_id_vendedor INT)
+RETURNS DECIMAL(12,2) DETERMINISTIC READS SQL DATA
+BEGIN
+    DECLARE v_proyectado DECIMAL(12,2);
+    SELECT COALESCE(SUM(total_venta), 0) INTO v_proyectado FROM ventas
+    WHERE id_vendedor = p_id_vendedor AND estado_venta = 'Pendiente';
+    RETURN v_proyectado;
+END$$
+
+-- FUNCTION 5: HU-21 / HU-22 – Obtener vendedor responsable actual
+CREATE FUNCTION fn_obtener_vendedor_responsable(p_id_cliente INT)
+RETURNS INT DETERMINISTIC READS SQL DATA
+BEGIN
+    DECLARE v_id_vendedor INT;
+    SELECT id_vendedor INTO v_id_vendedor FROM asignaciones_crm
+    WHERE id_cliente = p_id_cliente AND estado = 'Activa'
+    ORDER BY fecha_asignacion DESC LIMIT 1;
+    RETURN COALESCE(v_id_vendedor, -1);
+END$$
+
+-- FUNCTION 6: HU-26 – Validar si un producto es vendible
+CREATE FUNCTION fn_es_producto_vendible(p_id_producto INT)
+RETURNS BOOLEAN DETERMINISTIC READS SQL DATA
+BEGIN
+    DECLARE v_es_vendible BOOLEAN;
+    SELECT (tipo_licencia = 'Comercial' AND estado = TRUE) INTO v_es_vendible
+    FROM productos WHERE id_producto = p_id_producto;
+    RETURN COALESCE(v_es_vendible, FALSE);
+END$$
+
+-- FUNCTION 7: HU-25 / HU-30 – Contar interacciones recientes por cliente
+CREATE FUNCTION fn_contar_interacciones_recientes(p_id_cliente INT, p_dias INT)
+RETURNS INT DETERMINISTIC READS SQL DATA
+BEGIN
+    DECLARE v_count INT;
+    SELECT COUNT(*) INTO v_count FROM interacciones i
+    JOIN asignaciones_crm ac ON i.id_asignacion = ac.id_asignacion
+    WHERE ac.id_cliente = p_id_cliente
+      AND i.fecha_interaccion >= DATE_SUB(CURDATE(), INTERVAL p_dias DAY);
+    RETURN v_count;
+END$$
+
+-- FUNCTION 8: HU-30 – Tasa de éxito de correos por evento
+CREATE FUNCTION fn_tasa_exito_correos(p_evento VARCHAR(80))
+RETURNS DECIMAL(5,2) DETERMINISTIC READS SQL DATA
+BEGIN
+    DECLARE v_tasa DECIMAL(5,2);
+    SELECT ROUND((SUM(CASE WHEN ce.estado_correo = 'Enviado' THEN 1 ELSE 0 END) /
+                 NULLIF(COUNT(*), 0)) * 100, 2) INTO v_tasa
+    FROM correos_enviados ce JOIN plantillas_correo pc ON ce.id_plantilla = pc.id_plantilla
+    WHERE pc.evento = p_evento;
+    RETURN COALESCE(v_tasa, 0);
+END$$
+
+-- FUNCTION 9: HU-30 – Contar asignaciones activas por vendedor
+CREATE FUNCTION fn_asignaciones_activas_vendedor(p_id_vendedor INT)
+RETURNS INT DETERMINISTIC READS SQL DATA
+BEGIN
+    DECLARE v_count INT;
+    SELECT COUNT(*) INTO v_count FROM asignaciones_crm
+    WHERE id_vendedor = p_id_vendedor AND estado = 'Activa';
+    RETURN v_count;
+END$$
+
+-- PROCEDIMIENTOS ALMACENADOS
+-- PROCEDURE 1: HU-26 – Registrar venta completa con detalle de productos
+CREATE PROCEDURE sp_registrar_venta(
+    IN p_id_cliente INT, IN p_id_vendedor INT, IN p_numero_contrato VARCHAR(100),
+    IN p_metodo_pago VARCHAR(50), IN p_detalles JSON
+)
+BEGIN
+    DECLARE v_id_venta INT; DECLARE v_total DECIMAL(12,2) DEFAULT 0;
+    DECLARE v_precio_unitario DECIMAL(10,2); DECLARE v_subtotal DECIMAL(12,2);
+    DECLARE v_cantidad INT; DECLARE v_id_producto INT;
+    DECLARE i INT DEFAULT 0; DECLARE n INT DEFAULT JSON_LENGTH(p_detalles);
+    DECLARE v_estado_cliente VARCHAR(50); DECLARE v_vendedor_activo BOOLEAN DEFAULT FALSE;
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+    START TRANSACTION;
+    SELECT estado_cliente INTO v_estado_cliente FROM clientes WHERE id_cliente = p_id_cliente FOR UPDATE;
+    IF v_estado_cliente IS NULL OR v_estado_cliente IN ('Inactivo','Descartado') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El cliente no existe o no puede recibir ventas.'; END IF;
+    SELECT estado INTO v_vendedor_activo FROM vendedores WHERE id_vendedor = p_id_vendedor FOR UPDATE;
+    IF v_vendedor_activo IS NULL OR v_vendedor_activo = FALSE THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El vendedor no existe o está inactivo.'; END IF;
+    IF NOT EXISTS (SELECT 1 FROM asignaciones_crm WHERE id_cliente = p_id_cliente AND id_vendedor = p_id_vendedor AND estado = 'Activa') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El vendedor requiere una asignación activa con el cliente.'; END IF;
+    IF n IS NULL OR n < 1 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La venta debe incluir al menos un producto.'; END IF;
+    INSERT INTO ventas (id_cliente,id_vendedor,numero_contrato,metodo_pago,estado_venta,total_venta)
+    VALUES (p_id_cliente,p_id_vendedor,p_numero_contrato,p_metodo_pago,'Pendiente',0);
+    SET v_id_venta = LAST_INSERT_ID();
+    SAVEPOINT sp_cabecera_guardada;
+    WHILE i < n DO
+        SET v_id_producto = JSON_UNQUOTE(JSON_EXTRACT(p_detalles, CONCAT('$[',i,'].id_producto')));
+        SET v_cantidad = JSON_UNQUOTE(JSON_EXTRACT(p_detalles, CONCAT('$[',i,'].cantidad')));
+        SELECT precio INTO v_precio_unitario FROM productos
+        WHERE id_producto = v_id_producto AND estado = TRUE;
+        IF v_precio_unitario IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Producto inválido o inactivo.'; END IF;
+        SET v_subtotal = v_precio_unitario * v_cantidad;
+        SET v_total = v_total + v_subtotal;
+        INSERT INTO detalle_ventas (id_venta,id_producto,cantidad,precio_unitario,subtotal)
+        VALUES (v_id_venta,v_id_producto,v_cantidad,v_precio_unitario,v_subtotal);
+        SET i = i + 1;
+    END WHILE;
+    UPDATE ventas SET total_venta = v_total WHERE id_venta = v_id_venta;
+    COMMIT;
+    SELECT v_id_venta AS id_venta_generada, v_total AS total_final;
+END$$
+
+-- PROCEDURE 2: HU-27 – Actualizar venta pendiente
+CREATE PROCEDURE sp_actualizar_venta_pendiente(
+    IN p_id_venta INT, IN p_metodo_pago VARCHAR(50), IN p_detalles JSON
+)
+BEGIN
+    DECLARE v_estado_actual VARCHAR(30); DECLARE v_total DECIMAL(12,2) DEFAULT 0;
+    DECLARE v_precio_unitario DECIMAL(10,2); DECLARE v_subtotal DECIMAL(12,2);
+    DECLARE v_cantidad INT; DECLARE v_id_producto INT;
+    DECLARE i INT DEFAULT 0; DECLARE n INT DEFAULT JSON_LENGTH(p_detalles);
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+    START TRANSACTION;
+    SELECT estado_venta INTO v_estado_actual FROM ventas WHERE id_venta = p_id_venta FOR UPDATE;
+    IF v_estado_actual IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La venta no existe.'; END IF;
+    IF v_estado_actual <> 'Pendiente' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Solo se pueden editar ventas en estado Pendiente.'; END IF;
+    SAVEPOINT sp_antes_actualizacion;
+    IF p_metodo_pago IS NOT NULL THEN UPDATE ventas SET metodo_pago = p_metodo_pago WHERE id_venta = p_id_venta; END IF;
+    IF p_detalles IS NOT NULL AND n > 0 THEN
+        DELETE FROM detalle_ventas WHERE id_venta = p_id_venta;
+        WHILE i < n DO
+            SET v_id_producto = JSON_UNQUOTE(JSON_EXTRACT(p_detalles, CONCAT('$[',i,'].id_producto')));
+            SET v_cantidad = JSON_UNQUOTE(JSON_EXTRACT(p_detalles, CONCAT('$[',i,'].cantidad')));
+            SELECT precio INTO v_precio_unitario FROM productos WHERE id_producto = v_id_producto AND estado = TRUE;
+            IF v_precio_unitario IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Producto inválido o inactivo.'; END IF;
+            SET v_subtotal = v_precio_unitario * v_cantidad; SET v_total = v_total + v_subtotal;
+            INSERT INTO detalle_ventas (id_venta,id_producto,cantidad,precio_unitario,subtotal)
+            VALUES (p_id_venta,v_id_producto,v_cantidad,v_precio_unitario,v_subtotal);
+            SET i = i + 1;
+        END WHILE;
+        UPDATE ventas SET total_venta = v_total WHERE id_venta = p_id_venta;
+    END IF;
+    COMMIT;
+    SELECT p_id_venta AS id_venta_actualizada, v_total AS total_final;
+END$$
+
+-- PROCEDURE 3: HU-28 – Completar venta y convertir prospecto en cliente
+CREATE PROCEDURE sp_completar_venta(IN p_id_venta INT)
+BEGIN
+    DECLARE v_id_cliente INT; DECLARE v_estado_actual VARCHAR(30);
+    DECLARE v_total_venta DECIMAL(12,2); DECLARE v_total_detalle DECIMAL(12,2); DECLARE v_cantidad_detalles INT;
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+    START TRANSACTION;
+    SELECT id_cliente,estado_venta,total_venta INTO v_id_cliente,v_estado_actual,v_total_venta FROM ventas WHERE id_venta = p_id_venta FOR UPDATE;
+    IF v_estado_actual IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La venta no existe.'; END IF;
+    IF v_estado_actual <> 'Pendiente' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La venta no está pendiente.'; END IF;
+    SELECT COUNT(*), COALESCE(SUM(subtotal),0) INTO v_cantidad_detalles,v_total_detalle FROM detalle_ventas WHERE id_venta = p_id_venta;
+    IF v_cantidad_detalles = 0 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'No se puede completar una venta sin productos.'; END IF;
+    IF v_total_detalle <> v_total_venta THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El total de la venta no coincide con sus productos.'; END IF;
+    IF EXISTS (SELECT 1 FROM detalle_ventas d JOIN productos p ON p.id_producto = d.id_producto WHERE d.id_venta = p_id_venta AND (p.estado = FALSE OR p.tipo_licencia <> 'Comercial')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La venta contiene productos no comerciales o inactivos.'; END IF;
+    SAVEPOINT sp_pre_completado;
+    UPDATE ventas SET estado_venta = 'Completada' WHERE id_venta = p_id_venta;
+    UPDATE clientes SET estado_cliente = 'Cliente' WHERE id_cliente = v_id_cliente;
+    UPDATE descargas_prueba SET estado_prueba = 'Convertida',id_venta = p_id_venta
+    WHERE id_cliente = v_id_cliente AND estado_prueba = 'Activa';
+    COMMIT;
+    SELECT 'Venta completada y cliente convertido exitosamente' AS mensaje;
+END$$
+
+-- PROCEDURE 4: HU-22 – Reasignar cliente a otro vendedor
+CREATE PROCEDURE sp_reasignar_cliente(IN p_id_cliente INT,IN p_nuevo_vendedor INT,IN p_motivo VARCHAR(255))
+BEGIN
+    DECLARE v_id_asignacion_antigua INT;
+    DECLARE v_vendedor_anterior INT; DECLARE v_vendedor_activo BOOLEAN DEFAULT FALSE;
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+    START TRANSACTION;
+    SELECT estado INTO v_vendedor_activo FROM vendedores WHERE id_vendedor = p_nuevo_vendedor FOR UPDATE;
+    IF v_vendedor_activo IS NULL OR v_vendedor_activo = FALSE THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El vendedor no existe o está inactivo.'; END IF;
+    SELECT id_asignacion,id_vendedor INTO v_id_asignacion_antigua,v_vendedor_anterior FROM asignaciones_crm
+    WHERE id_cliente = p_id_cliente AND estado = 'Activa' LIMIT 1 FOR UPDATE;
+    IF v_id_asignacion_antigua IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El cliente no tiene una asignación activa.'; END IF;
+    IF v_vendedor_anterior = p_nuevo_vendedor THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El cliente ya está asignado a ese vendedor.'; END IF;
+    SAVEPOINT sp_reasignacion_inicio;
+    UPDATE asignaciones_crm SET estado = 'Finalizada',fecha_fin = NOW() WHERE id_asignacion = v_id_asignacion_antigua;
+    INSERT INTO asignaciones_crm (id_cliente,id_vendedor,fecha_asignacion,estado)
+    VALUES (p_id_cliente,p_nuevo_vendedor,NOW(),'Activa');
+    INSERT INTO interacciones (id_asignacion,tipo_interaccion,resultado,notas)
+    VALUES (LAST_INSERT_ID(),'Alerta Automática','Reasignación',p_motivo);
+    COMMIT;
+    SELECT 'Cliente reasignado correctamente' AS mensaje;
+END$$
+
+-- PROCEDURE 5: HU-22 – Finalizar asignación conservando historial
+CREATE PROCEDURE sp_finalizar_asignacion(IN p_id_asignacion INT)
+BEGIN
+    DECLARE v_estado_actual VARCHAR(20);
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+    START TRANSACTION;
+    SELECT estado INTO v_estado_actual FROM asignaciones_crm WHERE id_asignacion = p_id_asignacion FOR UPDATE;
+    IF v_estado_actual IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La asignación no existe.'; END IF;
+    IF v_estado_actual <> 'Activa' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'La asignación no está activa.'; END IF;
+    SAVEPOINT sp_finalizar;
+    UPDATE asignaciones_crm SET estado = 'Finalizada',fecha_fin = NOW() WHERE id_asignacion = p_id_asignacion;
+    COMMIT;
+    SELECT 'Asignación finalizada conservando historial' AS mensaje;
+END$$
+
+-- PROCEDURE 6: HU-25 – Registrar interacción comercial
+CREATE PROCEDURE sp_registrar_interaccion(IN p_id_cliente INT,IN p_tipo_interaccion VARCHAR(40),IN p_resultado VARCHAR(60),IN p_notas TEXT)
+BEGIN
+    DECLARE v_id_asignacion INT;
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+    START TRANSACTION;
+    SELECT id_asignacion INTO v_id_asignacion FROM asignaciones_crm
+    WHERE id_cliente = p_id_cliente AND estado = 'Activa' ORDER BY fecha_asignacion DESC LIMIT 1;
+    IF v_id_asignacion IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'No existe una asignación activa para este cliente.'; END IF;
+    SAVEPOINT sp_interaccion_guardada;
+    INSERT INTO interacciones (id_asignacion,tipo_interaccion,resultado,fecha_interaccion,notas)
+    VALUES (v_id_asignacion,p_tipo_interaccion,p_resultado,NOW(),p_notas);
+    COMMIT;
+    SELECT LAST_INSERT_ID() AS id_interaccion;
+END$$
+
+-- PROCEDURE 7: HU-19 – Enviar correo automático con idempotencia
+CREATE PROCEDURE sp_enviar_correo_automatico(IN p_id_cliente INT,IN p_evento VARCHAR(80),IN p_asunto VARCHAR(200),IN p_cuerpo TEXT)
+BEGIN
+    DECLARE v_id_plantilla INT; DECLARE v_correo_destino VARCHAR(150); DECLARE v_clave_idempotencia VARCHAR(160);
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+    START TRANSACTION;
+    SET v_clave_idempotencia = CONCAT(p_evento,'_',p_id_cliente);
+    IF EXISTS (SELECT 1 FROM correos_enviados WHERE clave_idempotencia = v_clave_idempotencia AND estado_correo = 'Enviado') THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'El correo ya fue enviado previamente para este evento.';
+    END IF;
+    SELECT correo_electronico INTO v_correo_destino FROM clientes WHERE id_cliente = p_id_cliente;
+    SELECT id_plantilla INTO v_id_plantilla FROM plantillas_correo WHERE evento = p_evento AND estado = TRUE LIMIT 1;
+    IF v_id_plantilla IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'No hay plantilla activa para este evento.'; END IF;
+    SAVEPOINT sp_correo_registrado;
+    INSERT INTO correos_enviados (id_cliente,id_plantilla,clave_idempotencia,evento,correo_destino,asunto_enviado,cuerpo_enviado,estado_correo,intentos,fecha_envio)
+    VALUES (p_id_cliente,v_id_plantilla,v_clave_idempotencia,p_evento,v_correo_destino,p_asunto,p_cuerpo,'Enviado',1,NOW());
+    COMMIT;
+    SELECT 'Correo registrado como enviado' AS estado;
+END$$
+
+-- PROCEDURE 8: HU-29 – Reporte de ventas por periodo
+CREATE PROCEDURE sp_reporte_ventas_periodo(IN p_fecha_inicio DATE,IN p_fecha_fin DATE,IN p_id_vendedor INT)
+BEGIN
+    START TRANSACTION;
+    SELECT v.id_venta,v.numero_contrato,c.nombre_completo AS cliente,ve.nombre_vendedor,v.fecha_venta,v.estado_venta,v.metodo_pago,v.total_venta,COUNT(dv.id_detalle) AS cantidad_productos
+    FROM ventas v JOIN clientes c ON v.id_cliente = c.id_cliente JOIN vendedores ve ON v.id_vendedor = ve.id_vendedor
+    LEFT JOIN detalle_ventas dv ON v.id_venta = dv.id_venta
+    WHERE v.fecha_venta >= p_fecha_inicio AND v.fecha_venta < DATE_ADD(p_fecha_fin,INTERVAL 1 DAY)
+      AND (p_id_vendedor IS NULL OR v.id_vendedor = p_id_vendedor)
+    GROUP BY v.id_venta,v.numero_contrato,c.nombre_completo,ve.nombre_vendedor,v.fecha_venta,v.estado_venta,v.metodo_pago,v.total_venta
+    ORDER BY v.fecha_venta DESC;
+    COMMIT;
+END$$
+
+-- PROCEDURE 9: HU-29 / HU-30 – Reporte de rendimiento por vendedor
+CREATE PROCEDURE sp_reporte_rendimiento_vendedores(IN p_fecha_inicio DATE,IN p_fecha_fin DATE)
+BEGIN
+    START TRANSACTION;
+    SELECT v.id_vendedor,ve.nombre_vendedor,
+      COUNT(CASE WHEN v.estado_venta = 'Completada' THEN 1 END) AS ventas_completadas,
+      COALESCE(SUM(CASE WHEN v.estado_venta = 'Completada' THEN v.total_venta ELSE 0 END),0) AS total_facturado,
+      COUNT(CASE WHEN v.estado_venta = 'Pendiente' THEN 1 END) AS ventas_pendientes,
+      COALESCE(SUM(CASE WHEN v.estado_venta = 'Pendiente' THEN v.total_venta ELSE 0 END),0) AS valor_proyectado
+    FROM ventas v JOIN vendedores ve ON v.id_vendedor = ve.id_vendedor
+    WHERE v.fecha_venta >= p_fecha_inicio
+      AND v.fecha_venta < DATE_ADD(p_fecha_fin,INTERVAL 1 DAY)
+    GROUP BY v.id_vendedor,ve.nombre_vendedor ORDER BY total_facturado DESC;
+    COMMIT;
+END$$
+
+-- PROCEDURE 10: HU-30 – Reporte de estado de correos automáticos
+CREATE PROCEDURE sp_reporte_estado_correos(IN p_fecha_inicio DATE,IN p_fecha_fin DATE)
+BEGIN
+    START TRANSACTION;
+    SELECT pc.evento,pc.nombre_plantilla,COUNT(*) AS total_envios,
+      SUM(CASE WHEN ce.estado_correo = 'Enviado' THEN 1 ELSE 0 END) AS exitosos,
+      SUM(CASE WHEN ce.estado_correo = 'Fallido' THEN 1 ELSE 0 END) AS fallidos,
+      ROUND((SUM(CASE WHEN ce.estado_correo = 'Enviado' THEN 1 ELSE 0 END) / COUNT(*)) * 100,2) AS tasa_exito_porcentaje
+    FROM correos_enviados ce JOIN plantillas_correo pc ON ce.id_plantilla = pc.id_plantilla
+    WHERE ce.fecha_creacion >= p_fecha_inicio
+      AND ce.fecha_creacion < DATE_ADD(p_fecha_fin,INTERVAL 1 DAY)
+    GROUP BY pc.evento,pc.nombre_plantilla ORDER BY total_envios DESC;
+    COMMIT;
+END$$
+DELIMITER ;
+
+-- Bloque Nicolas Triggers, Procedimientos y funciones si aplican. 
+-- BLOQUE NICOLAS HISTORIAS DE USUARIO 7 A 17 Y 31
+
+
+-- SESION 4
+-- =====================================================================
+-- VISTA 1: Reporte de Ventas (HU-29)
+CREATE OR REPLACE VIEW vw_reporte_ventas AS
+SELECT v.id_venta,v.numero_contrato,v.fecha_venta,v.estado_venta,v.metodo_pago,v.total_venta,
+       c.nombre_completo AS cliente,ve.nombre_vendedor,COUNT(dv.id_detalle) AS cantidad_productos
+FROM ventas v JOIN clientes c ON c.id_cliente=v.id_cliente
+JOIN vendedores ve ON ve.id_vendedor=v.id_vendedor
+LEFT JOIN detalle_ventas dv ON dv.id_venta=v.id_venta
+GROUP BY v.id_venta,v.numero_contrato,v.fecha_venta,v.estado_venta,v.metodo_pago,v.total_venta,c.nombre_completo,ve.nombre_vendedor;
+
+-- VISTA 2: Rendimiento por Vendedor (HU-29, HU-30)
+CREATE OR REPLACE VIEW vw_reporte_rendimiento_vendedores AS
+SELECT ve.id_vendedor,ve.nombre_vendedor,
+ COUNT(CASE WHEN v.estado_venta='Completada' THEN 1 END) AS ventas_completadas,
+ COALESCE(SUM(CASE WHEN v.estado_venta='Completada' THEN v.total_venta ELSE 0 END),0) AS total_facturado,
+ COUNT(CASE WHEN v.estado_venta='Pendiente' THEN 1 END) AS ventas_pendientes
+FROM vendedores ve LEFT JOIN ventas v ON v.id_vendedor=ve.id_vendedor
+GROUP BY ve.id_vendedor,ve.nombre_vendedor;
+
+-- VISTA 3: Interacciones por Vendedor (HU-30)
+CREATE OR REPLACE VIEW vw_reporte_interacciones AS
+SELECT ve.id_vendedor,ve.nombre_vendedor,
+ COUNT(DISTINCT CASE WHEN i.tipo_interaccion='Llamada' THEN i.id_interaccion END) AS llamadas,
+ COUNT(DISTINCT CASE WHEN i.tipo_interaccion='Correo' THEN i.id_interaccion END) AS correos,
+ COUNT(DISTINCT CASE WHEN i.tipo_interaccion='Meeting' THEN i.id_interaccion END) AS meetings,
+ COUNT(DISTINCT i.id_interaccion) AS total_interacciones
+FROM vendedores ve LEFT JOIN asignaciones_crm ac ON ac.id_vendedor=ve.id_vendedor
+LEFT JOIN interacciones i ON i.id_asignacion=ac.id_asignacion
+GROUP BY ve.id_vendedor,ve.nombre_vendedor;
+
+-- VISTA 4: Asignaciones y Carga (HU-30)
+CREATE OR REPLACE VIEW vw_reporte_asignaciones AS
+SELECT ve.id_vendedor,ve.nombre_vendedor,
+ COUNT(DISTINCT CASE WHEN ac.estado='Activa' THEN ac.id_asignacion END) AS clientes_activos,
+ COUNT(DISTINCT CASE WHEN ac.estado='Finalizada' THEN ac.id_asignacion END) AS asignaciones_finalizadas
+FROM vendedores ve LEFT JOIN asignaciones_crm ac ON ac.id_vendedor=ve.id_vendedor
+GROUP BY ve.id_vendedor,ve.nombre_vendedor;
+
+-- VISTA 5: Automatización de Correos (HU-30)
+CREATE OR REPLACE VIEW vw_reporte_automatizacion AS
+SELECT pc.evento,pc.nombre_plantilla,COUNT(ce.id_correo) AS total_envios,
+ SUM(CASE WHEN ce.estado_correo='Enviado' THEN 1 ELSE 0 END) AS exitosos,
+ SUM(CASE WHEN ce.estado_correo='Fallido' THEN 1 ELSE 0 END) AS fallidos,
+ ROUND(100.0*SUM(CASE WHEN ce.estado_correo='Enviado' THEN 1 ELSE 0 END)/NULLIF(COUNT(ce.id_correo),0),2) AS tasa_exito_porcentaje
+FROM plantillas_correo pc LEFT JOIN correos_enviados ce ON ce.id_plantilla=pc.id_plantilla
+GROUP BY pc.evento,pc.nombre_plantilla;
+
+-- VISTA 6: Historial del Cliente (HU-25)
+CREATE OR REPLACE VIEW vw_historial_cliente AS
+SELECT c.id_cliente,c.nombre_completo AS cliente,'Interacción' AS tipo_evento,
+       i.fecha_interaccion AS fecha_evento,CONCAT(i.tipo_interaccion,' - ',COALESCE(i.resultado,'')) AS descripcion
+FROM clientes c JOIN asignaciones_crm ac ON ac.id_cliente=c.id_cliente
+JOIN interacciones i ON i.id_asignacion=ac.id_asignacion
+UNION ALL
+SELECT c.id_cliente,c.nombre_completo,'Correo Automático',ce.fecha_envio,
+       CONCAT('Evento: ',ce.evento,' - Estado: ',ce.estado_correo)
+FROM clientes c JOIN correos_enviados ce ON ce.id_cliente=c.id_cliente
+UNION ALL
+SELECT c.id_cliente,c.nombre_completo,'Venta',v.fecha_venta,
+       CONCAT('Contrato: ',COALESCE(v.numero_contrato,''),' - Total: $',v.total_venta)
+FROM clientes c JOIN ventas v ON v.id_cliente=c.id_cliente;
+
+
+-- Vistas de Viviana 
+
+-- Vistas De Nicolas 
+
+
+
+-- =====================================================================
+-- 2. ÍNDICES NECESARIOS
+-- YISEL (9 INDICES)
+CREATE INDEX idx_plantillas_evento_estado ON plantillas_correo(evento,estado);
+CREATE INDEX idx_correos_idempotencia ON correos_enviados(clave_idempotencia);
+CREATE INDEX idx_correos_estado_fecha ON correos_enviados(estado_correo,fecha_creacion);
+CREATE INDEX idx_asignaciones_cliente_estado ON asignaciones_crm(id_cliente,estado);
+CREATE INDEX idx_asignaciones_vendedor_estado ON asignaciones_crm(id_vendedor,estado);
+CREATE INDEX idx_interacciones_asignacion_fecha ON interacciones(id_asignacion,fecha_interaccion);
+CREATE INDEX idx_ventas_fecha_estado ON ventas(fecha_venta,estado_venta);
+CREATE INDEX idx_ventas_vendedor_estado ON ventas(id_vendedor,estado_venta);
+CREATE INDEX idx_detalle_venta ON detalle_ventas(id_venta);
+
+-- Indices Nicolas Si corresponde 
+
+-- Indices Viviana Si corresponde 
+
+
+
+-- =====================================================================
+-- 3. SIMULACIÓN DE CONCURRENCIA Y BLOQUEOS
+-- Sesión A: START TRANSACTION; SELECT id_venta FROM ventas WHERE id_venta=1 FOR UPDATE;
+-- Sesión B: UPDATE ventas SET metodo_pago=metodo_pago WHERE id_venta=1;
+-- Sesión A: COMMIT;
+
+-- 4. ROLES Y USUARIOS DE MYSQL
+
+
+/* ================= CONSULTAS DE VALIDACIÓN ================= */
+SELECT 'empresas' AS tabla,COUNT(*) AS registros FROM empresas
+UNION ALL SELECT 'clientes',COUNT(*) FROM clientes
+UNION ALL SELECT 'vendedores',COUNT(*) FROM vendedores
+UNION ALL SELECT 'usuarios',COUNT(*) FROM usuarios
+UNION ALL SELECT 'recuperacion_claves',COUNT(*) FROM recuperacion_claves
+UNION ALL SELECT 'productos',COUNT(*) FROM productos
+UNION ALL SELECT 'campanas_marketing',COUNT(*) FROM campanas_marketing
+UNION ALL SELECT 'acciones_marketing',COUNT(*) FROM acciones_marketing
+UNION ALL SELECT 'actividad_web',COUNT(*) FROM actividad_web
+UNION ALL SELECT 'descargas_prueba',COUNT(*) FROM descargas_prueba
+UNION ALL SELECT 'asignaciones_crm',COUNT(*) FROM asignaciones_crm
+UNION ALL SELECT 'interacciones',COUNT(*) FROM interacciones
+UNION ALL SELECT 'ventas',COUNT(*) FROM ventas
+UNION ALL SELECT 'detalle_ventas',COUNT(*) FROM detalle_ventas
+UNION ALL SELECT 'auditoria_cambios',COUNT(*) FROM auditoria_cambios
+UNION ALL SELECT 'alertas',COUNT(*) FROM alertas
+UNION ALL SELECT 'plantillas_correo',COUNT(*) FROM plantillas_correo
+UNION ALL SELECT 'correos_enviados',COUNT(*) FROM correos_enviados
+UNION ALL SELECT 'sincronizaciones_salesforce',COUNT(*) FROM sincronizaciones_salesforce
+UNION ALL SELECT 'salesforce_sincronizaciones',COUNT(*) FROM salesforce_sincronizaciones;
+SELECT estado_cliente,COUNT(*) AS clientes FROM clientes GROUP BY estado_cliente;
+SELECT estado_venta,COUNT(*) AS ventas FROM ventas GROUP BY estado_venta;
+SELECT * FROM vw_reporte_ventas LIMIT 10;

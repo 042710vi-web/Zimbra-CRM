@@ -2,7 +2,7 @@
  * Define las direcciones para consultar y gestionar asignaciones crm.
  */
 import { Router } from 'express';
-import { changeAssignee, close, create, list } from '../../apicontroller/AsignacionesCrm.controller.js';
+import { batch, changeAssignee, close, create, list, take } from '../../apicontroller/AsignacionesCrm.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { allowRoles } from '../middleware/role.middleware.js';
 const router = Router();
@@ -11,6 +11,8 @@ router.use(authenticate);
 router.get('/', list);
 // HU-21: POST /api/assignments asigna un prospecto (solo administrador).
 router.post('/', allowRoles('Administrador'), create);
+router.post('/lote', allowRoles('Administrador'), batch);
+router.post('/tomar', allowRoles('Vendedor'), take);
 // HU-22: POST /api/assignments/reasignar conserva y finaliza la asignación anterior.
 router.post('/reasignar', allowRoles('Administrador'), changeAssignee);
 // HU-22: POST /api/assignments/finalizar finaliza la asignación activa.

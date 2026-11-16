@@ -55,6 +55,13 @@ export async function registerClient(data = {}) {
   };
 }
 
+// HU-04: recibe un lead del formulario público y vincula su actividad rastreada.
+export async function registerPublicLead(data = {}) {
+  const clave_rastreo = data.clave_rastreo == null ? null : requireText(data.clave_rastreo, 'La clave de rastreo', 100);
+  const id_cliente = await upsertPublicLead(cleanClientData(data), clave_rastreo);
+  return { id_cliente, message: 'Lead recibido correctamente.' };
+}
+
 // HU-06
 export async function listClients(query = {}) {
   const estado = query.estado
@@ -66,6 +73,14 @@ export async function listClients(query = {}) {
     estado,
     ...pagination(query),
   });
+}
+
+// HU-05: consulta los datos y el historial relacionado de un cliente.
+export async function getClientDetail(query = {}) {
+  const id_cliente = requireId(query.id_cliente, 'El cliente');
+  const detail = await findClientDetail(id_cliente);
+  if (!detail) throw Object.assign(new Error('No existe el cliente indicado.'), { status: 404 });
+  return detail;
 }
 
 // HU-07

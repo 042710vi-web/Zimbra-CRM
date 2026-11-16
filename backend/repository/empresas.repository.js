@@ -1,7 +1,7 @@
 /**
  * Consulta y guarda en la base de datos la información de empresas.
  */
-import { QueryTypes } from 'sequelize';
+import { Op } from 'sequelize';
 import { sequelize } from '../config/database.js';
 import { Empresa } from '../entity/Empresas.entity.js';
 import { registerChanges } from './auditoria.repository.js';

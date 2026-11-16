@@ -12,16 +12,18 @@ import RecuperarPasswordPage from '../pages/login/RecuperarPasswordPage.jsx';
 import RestablecerPasswordPage from '../pages/login/RestablecerPasswordPage.jsx';
 import InteraccionesPage from '../pages/interacciones/InteraccionesPage.jsx';
 import ReportesPage from '../pages/reportes/ReportesPage.jsx';
+import AutomatizacionPage from '../pages/automatizacion/AutomatizacionPage.jsx';
+import VendedoresPage from '../pages/vendedores/VendedoresPage.jsx';
 
 function ProtectedLayout() {
   const { session } = useAuth();
-  if (!session?.token) return <Navigate to="/login" replace />;
+  if (!session?.token || !session?.user) return <Navigate to="/login" replace />;
   return <AppLayout />;
 }
 
 function LoginRoute() {
   const { session } = useAuth();
-  return session?.token ? <Navigate to="/" replace /> : <LoginPage />;
+  return session?.token && session?.user ? <Navigate to="/" replace /> : <LoginPage />;
 }
 
 function CrmRoutes() {
@@ -39,6 +41,8 @@ function CrmRoutes() {
       <Route path="/ventas" element={<VentasPage suggestedClientId={suggestedClientId} />} />
       <Route path="/interacciones" element={<InteraccionesPage />} />
       {session?.user?.role === 'Administrador' && <Route path="/reportes" element={<ReportesPage />} />}
+      {session?.user?.role === 'Administrador' && <Route path="/plantillas" element={<AutomatizacionPage />} />}
+      {session?.user?.role === 'Administrador' && <Route path="/vendedores" element={<VendedoresPage />} />}
     </Route>
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>;

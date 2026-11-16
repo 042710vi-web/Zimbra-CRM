@@ -2,7 +2,7 @@
  * Define las direcciones para consultar y gestionar vendedores.
  */
 import { Router } from 'express';
-import { create, list } from '../../apicontroller/Vendedores.controller.js';
+import { changeState, create, list, update } from '../../apicontroller/vendedores.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { allowRoles } from '../middleware/role.middleware.js';
 
@@ -12,5 +12,7 @@ router.use(authenticate);
 router.get('/', allowRoles('Administrador'), list);
 // POST /api/vendors (crear vendedor; historia específica aún no incluida en la matriz HU).
 router.post('/', allowRoles('Administrador'), create);
+router.post('/actualizar', allowRoles('Administrador'), update);
+router.post('/cambiar-estado', allowRoles('Administrador'), changeState);
 /** Pone las direcciones de esta área a disposición de la aplicación. */
 export default router;

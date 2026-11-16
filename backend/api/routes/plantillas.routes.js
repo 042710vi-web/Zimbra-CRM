@@ -1,0 +1,11 @@
+import { Router } from 'express';
+import { changeState, create, list, update } from '../../apicontroller/plantillas.controller.js';
+import { authenticate } from '../middleware/auth.middleware.js';
+import { allowRoles } from '../middleware/role.middleware.js';
+const router = Router();
+router.use(authenticate, allowRoles('Administrador'));
+router.get('/', list);
+router.post('/', create);
+router.post('/actualizar', update);
+router.post('/cambiar-estado', changeState);
+export default router;

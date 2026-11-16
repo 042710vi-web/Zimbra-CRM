@@ -2,7 +2,7 @@
  * Define las direcciones para consultar y gestionar reportes.
  */
 import { Router } from 'express';
-import { campaigns, clients, interactions, sales } from '../../apicontroller/Reportes.controller.js';
+import { assignments, automation, campaigns, clients, exportCsv, interactions, sales } from '../../apicontroller/reportes.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { allowRoles } from '../middleware/role.middleware.js';
 
@@ -20,6 +20,9 @@ router.get('/campaigns', campaigns);
 // HU-30: resume interacciones, seguimientos y asignaciones.
 // Endpoint: GET /api/reports/interactions.
 router.get('/interactions', interactions);
+router.get('/assignments', assignments);
+router.get('/automation', automation);
+router.get('/exportar', exportCsv);
 
 /** Pone las direcciones de esta área a disposición de la aplicación. */
 export default router;

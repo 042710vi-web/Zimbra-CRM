@@ -1,7 +1,7 @@
 /**
  * Valida los datos y coordina las operaciones necesarias para gestionar vendedores.
  */
-import { createVendor as saveVendor, listVendors } from '../repository/Vendedores.repository.js';
+import { createVendor as saveVendor, listVendors, setVendorState, updateVendor as saveUpdateVendor } from '../repository/vendedores.repository.js';
 
 /** Apoya la gestión de vendedores mediante una tarea interna del sistema. */
 const badRequest = (message) => Object.assign(new Error(message), { status: 400 });
@@ -17,4 +17,16 @@ export async function createVendor(data = {}) {
   if (typeof data.nombre_vendedor !== 'string' || !data.nombre_vendedor.trim()) throw badRequest('nombre_vendedor es obligatorio.');
   if (typeof data.correo_vendedor !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.correo_vendedor)) throw badRequest('correo_vendedor debe ser un correo válido.');
   return saveVendor(data);
+}
+export async function updateVendor(data = {}) {
+  const id_vendedor = Number(data.id_vendedor);
+  if (!Number.isInteger(id_vendedor) || id_vendedor < 1) throw badRequest('id_vendedor debe ser entero positivo.');
+  if (typeof data.nombre_vendedor !== 'string' || !data.nombre_vendedor.trim()) throw badRequest('nombre_vendedor es obligatorio.');
+  if (typeof data.correo_vendedor !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.correo_vendedor)) throw badRequest('correo_vendedor debe ser un correo válido.');
+  return saveUpdateVendor({ ...data, id_vendedor });
+}
+export async function changeVendorState(data = {}) {
+  const id_vendedor = Number(data.id_vendedor);
+  if (!Number.isInteger(id_vendedor) || id_vendedor < 1 || typeof data.estado !== 'boolean') throw badRequest('Envía id_vendedor válido y estado booleano.');
+  return setVendorState({ id_vendedor, estado: data.estado });
 }

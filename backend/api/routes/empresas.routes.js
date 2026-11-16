@@ -4,9 +4,7 @@
 import { Router } from 'express';
 import {
   create,
-  detail,
   list,
-  update,
 } from '../../apicontroller/empresas.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 

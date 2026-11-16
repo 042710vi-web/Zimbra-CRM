@@ -32,6 +32,12 @@ export function errorHandler(error, _req, res, _next) {
 
   const dbCode = error.parent?.code || error.original?.code || error.code;
 
+  if (dbCode === 'ER_SIGNAL_EXCEPTION') {
+    const message = error.parent?.sqlMessage || error.original?.sqlMessage || error.message;
+    const conflict = /ya tiene una asignación|asignación activa|no está pendiente|solo se pueden editar|límite de .*intentos|ya fue enviado/i.test(message);
+    return res.status(conflict ? 409 : 400).json({ message });
+  }
+
   if (dbCode === 'ER_CHECK_CONSTRAINT_VIOLATED') {
     return res.status(400).json({
       ok: false,

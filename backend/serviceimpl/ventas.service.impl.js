@@ -1,7 +1,7 @@
 /**
  * Valida los datos y coordina las operaciones necesarias para gestionar ventas.
  */
-import { changeSaleStatus as setSaleStatus, createSale, listSales, updateSale } from '../repository/Ventas.repository.js';
+import { changeSaleStatus as setSaleStatus, createSale, getSaleDetail as readSaleDetail, listSales, updateSale } from '../repository/ventas.repository.js';
 /** Apoya la gestión de ventas mediante una tarea interna del sistema. */
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 /** Apoya la gestión de ventas mediante una tarea interna del sistema. */
@@ -36,11 +36,17 @@ export async function registerSale(data = {}) {
 /** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function editSale(data = {}, user = {}) {
   if (!data.id_venta) throw fail('id_venta es obligatorio.');
-  return updateSale({ id_venta: id(data.id_venta, 'id_venta'), metodo_pago: data.metodo_pago, items: normalizeItems(data.items), ownerId: user.role === 'Vendedor' ? id(user.vendorId, 'vendedor') : undefined });
+  const items = data.items === undefined ? [] : normalizeItems(data.items);
+  if (!items.length && data.metodo_pago === undefined) throw fail('Envía items o metodo_pago para actualizar.');
+  return updateSale({ id_venta: id(data.id_venta, 'id_venta'), metodo_pago: data.metodo_pago, items, ownerId: user.role === 'Vendedor' ? id(user.vendorId, 'vendedor') : undefined });
 }
 /** Aplica las validaciones y coordina esta operación antes de guardar o consultar información. */
 export async function changeSaleState(data = {}) {
   const estado_venta = data.estado_venta;
   if (!['Completada', 'Cancelada'].includes(estado_venta)) throw fail('estado_venta debe ser Completada o Cancelada.');
   return setSaleStatus({ id_venta: id(data.id_venta, 'id_venta'), estado_venta });
+}
+export async function getSaleDetail(query = {}, user = {}) {
+  const id_venta = id(query.id_venta, 'id_venta');
+  return readSaleDetail({ id_venta, id_vendedor: user.role === 'Vendedor' ? id(user.vendorId, 'vendedor') : undefined });
 }
