@@ -1,5 +1,5 @@
-/**
- * Presenta las operaciones que otras partes del sistema pueden utilizar para gestionar acciones marketing.
+/** HU-14 - Acciones de marketing.
+ * Permite usar las operaciones del módulo desde otras partes del sistema.
  */
 export {
   changeMarketingActionState,

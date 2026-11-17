@@ -1,82 +1,61 @@
-/**
- * Consulta y guarda en la base de datos la información de acciones marketing.
+/** HU-14 - Acciones de marketing.
+ * Consulta y guarda los datos mediante las operaciones de la base de datos.
  */
-import { Op, QueryTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
-import { AccionMarketing } from '../entity/AccionesMarketing.entity.js';
-import { registerChanges } from './AuditoriaCambios.repository.js';
-
-// Devuelve el catálogo y cuántas actividades se registraron con cada acción.
+import { httpError } from '../utils/validators.js';
+/** Consulta acciones y cuántas veces aparecen en el historial. */
 export async function listMarketingActions({ q, estado, page, limit, offset }) {
-  const conditions = ['1 = 1'];
-  const replacements = { limit, offset };
-  if (q) { conditions.push('a.nombre_accion LIKE :q'); replacements.q = `%${q}%`; }
-  if (estado !== undefined) { conditions.push('a.estado = :estado'); replacements.estado = estado; }
-  const where = conditions.join(' AND ');
-  const [count] = await sequelize.query(
-    `SELECT COUNT(*) AS total FROM acciones_marketing a WHERE ${where}`,
-    { replacements, type: QueryTypes.SELECT },
-  );
-  const rows = await sequelize.query(
-    `SELECT a.id_accion, a.nombre_accion, a.puntaje, a.estado,
-            COUNT(w.id_actividad) AS veces_registrada
-       FROM acciones_marketing a
-       LEFT JOIN actividad_web w ON w.id_accion = a.id_accion
-      WHERE ${where}
-      GROUP BY a.id_accion, a.nombre_accion, a.puntaje, a.estado
-      ORDER BY a.nombre_accion
-      LIMIT :limit OFFSET :offset`,
-    { replacements, type: QueryTypes.SELECT },
-  );
-  return {
-    data: rows,
-    pagination: { page, limit, total: Number(count.total), pages: Math.ceil(Number(count.total) / limit) },
-  };
+  return procedurePage(await call('sp_listar_acciones', [q || null, estado, limit, offset]), page, limit);
 }
-
-// Registra una acción de marketing activa y registra su creación.
-export async function createMarketingAction(data) {
-  return sequelize.transaction(async (transaction) => {
-    const duplicate = await AccionMarketing.findOne({ where: { nombre_accion: data.nombre_accion }, transaction });
-    if (duplicate) throw Object.assign(new Error('Ya existe una acción con ese nombre.'), { status: 409 });
-    const action = await AccionMarketing.create({ ...data, estado: true }, { transaction });
-    await registerChanges({
-      tabla: 'acciones_marketing', idRegistro: action.id_accion, usuario: 'zimbra-api', transaction,
-      cambios: { puntaje: [null, action.puntaje] },
-    });
-    return action.id_accion;
-  });
+/** Guarda el puntaje que utilizarán los eventos nuevos. */
+export async function createMarketingAction(data, usuario) {
+  const [[row]] = await call('sp_guardar_accion', [null, data.nombre_accion, data.puntaje, usuario]);
+  return row.id_accion;
 }
-
-// Modifica nombre o puntaje sin cambiar los puntos ya guardados en actividades.
-export async function updateMarketingAction({ id_accion, ...changes }, usuario) {
-  return sequelize.transaction(async (transaction) => {
-    const action = await AccionMarketing.findByPk(id_accion, { transaction, lock: transaction.LOCK.UPDATE });
-    if (!action) throw Object.assign(new Error('La acción indicada no existe.'), { status: 404 });
-    const before = action.get({ plain: true });
-    const duplicate = await AccionMarketing.findOne({
-      where: { nombre_accion: changes.nombre_accion, id_accion: { [Op.ne]: id_accion } }, transaction,
-    });
-    if (duplicate) throw Object.assign(new Error('Ya existe otra acción con ese nombre.'), { status: 409 });
-    await action.update(changes, { transaction });
-    await registerChanges({
-      tabla: 'acciones_marketing', idRegistro: id_accion, usuario, transaction,
-      cambios: Object.fromEntries(Object.keys(changes).map((field) => [field, [before[field], changes[field]]])),
-    });
-    return id_accion;
-  });
+/** Actualiza el catálogo sin reescribir los puntos históricos. */
+export async function updateMarketingAction(data, usuario) {
+  await call('sp_guardar_accion', [data.id_accion, data.nombre_accion, data.puntaje, usuario]);
 }
-
-// Activa o pausa una acción sin borrar las actividades que ya la utilizaron.
+/** Cambia la disponibilidad de la acción. */
 export async function changeMarketingActionStatus({ id_accion, estado }, usuario) {
-  return sequelize.transaction(async (transaction) => {
-    const action = await AccionMarketing.findByPk(id_accion, { transaction, lock: transaction.LOCK.UPDATE });
-    if (!action) throw Object.assign(new Error('La acción indicada no existe.'), { status: 404 });
-    const previous = Boolean(action.estado);
-    await action.update({ estado }, { transaction });
-    await registerChanges({
-      tabla: 'acciones_marketing', idRegistro: id_accion, usuario, transaction,
-      cambios: { estado: [previous ? 'Activa' : 'Inactiva', estado ? 'Activa' : 'Inactiva'] },
+  await call('sp_estado_accion', [id_accion, estado, usuario]);
+}
+
+/** Pide a la base de datos que realice la operación de este módulo.
+ * Devuelve los datos o informa el problema y deja disponible la conexión.
+ * La base de datos se encarga de guardar o deshacer los cambios.
+ */
+async function call(name, parameters = []) {
+  if (!['sp_estado_accion', 'sp_guardar_accion', 'sp_listar_acciones'].includes(name)) throw new Error('Procedimiento no permitido.');
+  const connection = await sequelize.connectionManager.getConnection({ type: 'WRITE' });
+  try {
+    const results = await new Promise((resolve, reject) => {
+      connection.query(
+        `CALL ${name}(${parameters.map(() => '?').join(',')})`,
+        parameters.map(value => value === undefined ? null : value),
+        (error, rows) => error ? reject(error) : resolve(rows),
+      );
     });
-  });
+    // Conserva las listas de datos que devuelve la consulta.
+    return results.filter(Array.isArray);
+  } catch (error) {
+    const status = { 30001: 400, 30003: 403, 30004: 404, 30009: 409, 1062: 409, 1452: 400, 3819: 400, 1406: 400 }[error.errno];
+    if (status) {
+      const message = error.errno === 1062 ? 'El nombre o dato único ya está registrado.'
+        : error.errno === 1452 ? 'La referencia indicada no existe.'
+          : error.errno === 3819 ? 'Alguno de los valores enviados no está permitido.'
+            : error.errno === 1406 ? 'Alguno de los textos enviados es demasiado largo.'
+              : error.sqlMessage;
+      throw httpError(status, message);
+    }
+    throw error;
+  } finally {
+    await sequelize.connectionManager.releaseConnection(connection);
+  }
+}
+
+/** Prepara la página solicitada y el total de resultados. */
+function procedurePage(sets, page, limit, transform = row => row) {
+  const total = Number(sets[1]?.[0]?.total || 0);
+  return { data: (sets[0] || []).map(transform), pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
 }

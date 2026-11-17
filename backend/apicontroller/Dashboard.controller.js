@@ -1,5 +1,5 @@
-/**
- * Recibe las solicitudes de dashboard, las entrega al servicio correspondiente y comunica el resultado.
+/** HU-31 - Panel comercial.
+ * Recibe las solicitudes y devuelve las respuestas.
  */
 import { getDashboard as readDashboard } from '../service/Dashboard.service.js';
 

@@ -1,5 +1,5 @@
-/**
- * Presenta las operaciones que otras partes del sistema pueden utilizar para gestionar actividad web.
+/** HU-15 y HU-16 - Actividad web.
+ * Permite usar las operaciones del módulo desde otras partes del sistema.
  */
 export {
   createActivity,

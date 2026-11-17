@@ -41,7 +41,7 @@ export async function markSyncSuccess({
 }) {
   return SalesforceSync.update(
     {
-      estado: 'Sincronizada',
+      estado: 'Sincronizado',
       salesforce_id,
       mensaje_error: null,
       intentos: sequelize.literal('intentos + 1'),
@@ -57,7 +57,7 @@ export async function markSyncFailure({
 }) {
   return SalesforceSync.update(
     {
-      estado: 'Error',
+      estado: 'Fallido',
       mensaje_error: String(mensaje_error || 'Error de sincronización').slice(0, 4000),
       intentos: sequelize.literal('intentos + 1'),
       fecha_actualizacion: new Date(),

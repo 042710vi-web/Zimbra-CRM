@@ -13,8 +13,8 @@ export async function listEmails({ estado, id_cliente, page, limit }) {
   return { rows, count: Number(count.total) };
 }
 
-export async function sendAutomatedEmail({ id_cliente, evento, variables = {} }) {
-  const clave = `${evento}_${id_cliente}`;
+export async function sendAutomatedEmail({ id_cliente, id_descarga, evento, variables = {} }) {
+  const clave = id_descarga === undefined ? `${evento}_${id_cliente}` : `${evento}_${id_cliente}_descarga_${id_descarga}`;
   const [previous] = await sequelize.query('SELECT id_correo, estado_correo FROM correos_enviados WHERE clave_idempotencia = :clave', { replacements: { clave }, type: QueryTypes.SELECT });
   if (previous?.estado_correo === 'Enviado') return { id_cliente, evento, estado_correo: 'Enviado', duplicado: true };
   if (previous?.estado_correo === 'Fallido') return retryEmail(previous.id_correo);
@@ -25,11 +25,24 @@ export async function sendAutomatedEmail({ id_cliente, evento, variables = {} })
   if (!client) throw Object.assign(new Error('No existe el cliente indicado.'), { status: 404 });
   const render = (value) => String(value).replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_match, key) => String(variables[key] ?? ''));
   const subject = render(template.asunto); const body = render(template.cuerpo);
+  // Los avisos de prueba reservan una clave por descarga antes de usar SMTP.
+  // El flujo sin contexto de descarga conserva el contrato general de HU-19.
+  let reserva;
+  if (id_descarga !== undefined) {
+    reserva = await callProcedure('sp_reservar_correo_prueba', [id_cliente, id_descarga, evento, subject, body]);
+    if (reserva.estado_correo === 'Enviado') return { id_cliente, evento, estado_correo: 'Enviado', duplicado: true };
+    if (reserva.estado_correo === 'Fallido') return retryEmail(reserva.id_correo);
+  }
   try {
     await sendBusinessEmail({ to: client.correo_electronico, subject, text: body });
-    await callProcedure('sp_enviar_correo_automatico', [id_cliente, evento, subject, body]);
+    if (reserva) await callProcedure('sp_resultado_correo_prueba', [reserva.id_correo, true, null]);
+    else await callProcedure('sp_enviar_correo_automatico', [id_cliente, evento, subject, body]);
     return { id_cliente, evento, estado_correo: 'Enviado' };
   } catch (cause) {
+    if (reserva) {
+      await callProcedure('sp_resultado_correo_prueba', [reserva.id_correo, false, String(cause.message)]);
+      throw cause;
+    }
     await sequelize.query(`INSERT INTO correos_enviados (id_cliente, id_plantilla, clave_idempotencia, evento, correo_destino, asunto_enviado, cuerpo_enviado, estado_correo, ultimo_error)
       VALUES (:id_cliente, :id_plantilla, :clave, :evento, :destino, :asunto, :cuerpo, 'Fallido', :error)
       ON DUPLICATE KEY UPDATE estado_correo = IF(estado_correo = 'Enviado', estado_correo, 'Fallido'), ultimo_error = VALUES(ultimo_error)`, {

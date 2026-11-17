@@ -1,5 +1,5 @@
-/**
- * Presenta las operaciones que otras partes del sistema pueden utilizar para gestionar campanas marketing.
+/** HU-12 y HU-13 - Campañas.
+ * Permite usar las operaciones del módulo desde otras partes del sistema.
  */
 export {
   actualizarCampanaMarketing,

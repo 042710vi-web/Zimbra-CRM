@@ -1,5 +1,5 @@
-/**
- * Valida los datos y coordina las operaciones necesarias para gestionar campanas marketing.
+/** HU-12 y HU-13 - Campañas.
+ * Revisa los datos y coordina las operaciones del módulo.
  */
 import {
   cambiarEstadoCampanaMarketing as guardarEstadoCampanaMarketing,
@@ -7,11 +7,11 @@ import {
   listarCampanasMarketing as consultarCampanasMarketing,
   actualizarCampanaMarketing as guardarCambiosCampanaMarketing,
 } from '../repository/CampanasMarketing.repository.js';
-import { httpError, pagination, requireId, requireOneOf, requireText } from '../utils/validators.js';
+import { httpError, optionalText, pagination, requireId, requireOneOf, requireText } from '../utils/validators.js';
 
 const ESTADOS_CAMPANA = ['Activa', 'Inactiva'];
 
-/** Apoya la gestión de campanasmarketing mediante una tarea interna del sistema. */
+/** Comprueba que la fecha exista y tenga el formato año-mes-día. */
 function validarFecha(value, label) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     throw httpError(400, `${label} debe tener formato AAAA-MM-DD.`);
@@ -23,19 +23,24 @@ function validarFecha(value, label) {
   return value;
 }
 
-/** Apoya la gestión de campanasmarketing mediante una tarea interna del sistema. */
+/** Revisa el nombre, código, presupuesto y fechas de la campaña antes de guardarla. */
 function validarDatosCampana(data = {}) {
   const nombre_campana = requireText(data.nombre_campana, 'El nombre de la campaña', 150);
-  const presupuesto = Number(data.presupuesto);
-  if (!Number.isFinite(presupuesto) || presupuesto < 0) throw httpError(400, 'El presupuesto debe ser un número igual o mayor que cero.');
+  const codigo_campana = optionalText(data.codigo_campana ?? data.codigo, 'El código de campaña', 50)?.toUpperCase() ?? null;
+  if (codigo_campana && !/^[A-Z0-9_-]+$/.test(codigo_campana)) throw httpError(400, 'El código de campaña solo admite letras, números, guion y guion bajo.');
+  if (data.presupuesto === '' || typeof data.presupuesto === 'boolean') throw httpError(400, 'El presupuesto debe ser numérico.');
+  const presupuesto = data.presupuesto === undefined || data.presupuesto === null ? null : Number(data.presupuesto);
+  if (presupuesto !== null && (!Number.isFinite(presupuesto) || presupuesto < 0)) throw httpError(400, 'El presupuesto debe ser un número igual o mayor que cero.');
+  if (presupuesto !== null && presupuesto > 9999999999.99) throw httpError(400, 'El presupuesto supera el máximo permitido.');
   const fecha_inicio = validarFecha(data.fecha_inicio, 'fecha_inicio');
   const fecha_fin = validarFecha(data.fecha_fin, 'fecha_fin');
   if (fecha_fin < fecha_inicio) throw httpError(400, 'La fecha de fin no puede ser anterior a la fecha de inicio.');
   const estado = data.estado === undefined ? 'Activa' : requireOneOf(data.estado, 'El estado', ESTADOS_CAMPANA);
   return {
     nombre_campana,
+    codigo_campana,
     descripcion: data.descripcion ? String(data.descripcion).trim() : null,
-    presupuesto: Number(presupuesto.toFixed(2)),
+    presupuesto: presupuesto === null ? null : Number(presupuesto.toFixed(2)),
     fecha_inicio,
     fecha_fin,
     estado,
@@ -52,9 +57,9 @@ export async function listarCampanasMarketing(query = {}) {
 }
 
 // HU-12: registra una campaña activa y verifica sus fechas y presupuesto.
-export async function crearCampanaMarketing(data = {}) {
+export async function crearCampanaMarketing(data = {}, user = {}) {
   const campana = validarDatosCampana(data);
-  const id_campana = await guardarCampanaMarketing(campana);
+  const id_campana = await guardarCampanaMarketing(campana, user.email);
   return { id_campana, message: 'Campaña registrada correctamente.' };
 }
 
@@ -71,16 +76,6 @@ export async function cambiarEstadoCampanaMarketing(data = {}, user = {}) {
   const id_campana = requireId(data.id_campana, 'La campaña');
   const estado = requireOneOf(data.estado, 'El estado', ESTADOS_CAMPANA);
   const fecha_fin = data.fecha_fin ? validarFecha(data.fecha_fin, 'fecha_fin') : undefined;
-  if (estado === 'Activa' && !fecha_fin) {
-    const actual = await consultarCampanasMarketing({ id_campana, limit: 1, offset: 0, page: 1 });
-    if (!actual.data.length) throw httpError(404, 'La campaña indicada no existe.');
-    if (actual.data[0].fecha_fin < new Date().toISOString().slice(0, 10)) {
-      throw httpError(409, 'La campaña ya finalizó; indique una nueva fecha_fin para activarla.');
-    }
-  }
-  if (fecha_fin && fecha_fin < new Date().toISOString().slice(0, 10) && estado === 'Activa') {
-    throw httpError(400, 'Una campaña activa debe tener una fecha_fin vigente.');
-  }
   await guardarEstadoCampanaMarketing({ id_campana, estado, fecha_fin }, user.email);
   return { id_campana, estado, message: `Campaña ${estado === 'Activa' ? 'activada' : 'desactivada'} correctamente.` };
 }

@@ -1,143 +1,69 @@
-/**
- * Consulta y guarda en la base de datos la información de actividad web.
+/** HU-15 y HU-16 - Actividad web.
+ * Consulta y guarda los datos mediante las operaciones de la base de datos.
  */
-import { QueryTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
-import { AccionMarketing } from '../entity/AccionesMarketing.entity.js';
-import { ActividadWeb } from '../entity/ActividadWeb.entity.js';
-import { Asignacion } from '../entity/AsignacionesCrm.entity.js';
-import { CampanasMarketing } from '../entity/CampanasMarketing.entity.js';
-import { Cliente } from '../entity/Clientes.entity.js';
-import { registerChanges } from './AuditoriaCambios.repository.js';
-
-/** Apoya la gestión de actividadweb mediante una tarea interna del sistema. */
-function leadState(score) {
-  if (score >= 70) return 'Calificado';
-  if (score >= 30) return 'Tibio';
-  return 'Frio';
+import { httpError } from '../utils/validators.js';
+/** El procedimiento inserta el evento y sus triggers actualizan puntos y alertas. */
+export async function createWebActivity({ id_cliente, id_accion, id_campana, direccion_origen, detalle, clave_rastreo, usuario }) {
+  const [[row]] = await call('sp_registrar_actividad', [id_cliente, id_accion, id_campana, direccion_origen, detalle, clave_rastreo, usuario]);
+  return { ...row, pendiente_identificacion: Boolean(Number(row.pendiente_identificacion)), es_retorno: Boolean(Number(row.es_retorno)), alerta_calificacion: Boolean(Number(row.alerta_calificacion)), alerta_retorno: Boolean(Number(row.alerta_retorno)) };
 }
-
-// Guarda la actividad, actualiza puntaje y clasificación.
-export async function recordActivityInTransaction({ client, action, id_campana, direccion_origen, detalle, usuario, transaction }) {
-  const activity = await ActividadWeb.create({
-    id_cliente: client.id_cliente,
-    id_accion: action.id_accion,
-    id_campana: id_campana || null,
-    puntaje_otorgado: action.puntaje,
-    direccion_origen: direccion_origen || null,
-    detalle: detalle || null,
-  }, { transaction });
-
-  const previousScore = Number(client.puntaje_total || 0);
-  const nextScore = previousScore + Number(action.puntaje);
-  const previousState = client.estado_cliente;
-  const nextState = ['Cliente', 'Inactivo'].includes(previousState) ? previousState : leadState(nextScore);
-  await client.update({ puntaje_total: nextScore, estado_cliente: nextState }, { transaction });
-
-  await registerChanges({
-    tabla: 'clientes', idRegistro: client.id_cliente, usuario, transaction,
-    cambios: {
-      puntaje_total: [previousScore, nextScore],
-      estado_cliente: [previousState, nextState],
-    },
-  });
-
-  const assignment = previousState !== 'Calificado' && nextState === 'Calificado'
-    ? await Asignacion.findOne({ where: { id_cliente: client.id_cliente, estado: 'Activa' }, transaction })
-    : null;
-  return {
-    id_actividad: activity.id_actividad,
-    puntos_agregados: Number(action.puntaje),
-    puntaje_total: nextScore,
-    estado_cliente: nextState,
-    alerta_calificacion: Boolean(assignment),
-  };
+/** MySQL aplica un savepoint por evento y confirma el conjunto de válidos. */
+export async function createWebActivitiesBatch({ actividades, usuario }) {
+  const [[row]] = await call('sp_actividad_lote', [JSON.stringify(actividades), usuario]);
+  const aceptadas = procedureJson(row.aceptadas).map(item => ({
+    ...item,
+    pendiente_identificacion: Boolean(Number(item.pendiente_identificacion)),
+    es_retorno: Boolean(Number(item.es_retorno)),
+    alerta_calificacion: Boolean(Number(item.alerta_calificacion)),
+    alerta_retorno: Boolean(Number(item.alerta_retorno)),
+  }));
+  return { total: Number(row.total), aceptadas, rechazadas: procedureJson(row.rechazadas) };
 }
-
-/** Realiza la consulta o el cambio de información solicitado. */
-export async function createWebActivity({ id_cliente, id_accion, id_campana, direccion_origen, detalle, usuario }) {
-  return sequelize.transaction(async (transaction) => {
-    const client = await Cliente.findByPk(id_cliente, { transaction, lock: transaction.LOCK.UPDATE });
-    if (!client) throw Object.assign(new Error('El cliente indicado no existe.'), { status: 404 });
-    if (client.estado_cliente === 'Inactivo') throw Object.assign(new Error('No se puede registrar actividad para un cliente inactivo.'), { status: 409 });
-    const action = await AccionMarketing.findOne({ where: { id_accion, estado: true }, transaction, lock: transaction.LOCK.UPDATE });
-    if (!action) throw Object.assign(new Error('La acción no existe o está inactiva.'), { status: 400 });
-    if (id_campana) {
-      const campana = await CampanasMarketing.findOne({ where: { id_campana, estado: 'Activa' }, transaction, lock: transaction.LOCK.UPDATE });
-      if (!campana) throw Object.assign(new Error('La campaña no existe o está inactiva.'), { status: 400 });
-      const today = new Date().toISOString().slice(0, 10);
-      if ((campana.fecha_inicio && campana.fecha_inicio > today) || (campana.fecha_fin && campana.fecha_fin < today)) {
-        throw Object.assign(new Error('La campaña no está dentro de su periodo de vigencia.'), { status: 400 });
-      }
-    }
-    return recordActivityInTransaction({ client, action, id_campana, direccion_origen, detalle, usuario, transaction });
-  });
-}
-
-// Presenta el historial de un cliente en orden cronológico inverso.
+/** Consulta el historial dentro del ámbito autorizado. */
 export async function listClientActivities({ id_cliente, id_vendedor, page, limit, offset }) {
-  const ownerFilter = id_vendedor
-    ? `AND EXISTS (SELECT 1 FROM asignaciones_crm a WHERE a.id_cliente = w.id_cliente AND a.id_vendedor = :id_vendedor AND a.estado = 'Activa')`
-    : '';
-  const replacements = { id_cliente, id_vendedor: id_vendedor || null, limit, offset };
-  const [count] = await sequelize.query(
-    `SELECT COUNT(*) AS total FROM actividad_web w
-      WHERE w.id_cliente = :id_cliente ${ownerFilter}`,
-    { replacements, type: QueryTypes.SELECT },
-  );
-  const rows = await sequelize.query(
-    `SELECT w.id_actividad, w.id_cliente, w.id_accion, a.nombre_accion,
-            w.puntaje_otorgado, w.id_campana, c.nombre_campana,
-            w.fecha_actividad, w.direccion_origen, w.detalle
-       FROM actividad_web w
-       INNER JOIN acciones_marketing a ON a.id_accion = w.id_accion
-       LEFT JOIN campanas_marketing c ON c.id_campana = w.id_campana
-      WHERE w.id_cliente = :id_cliente ${ownerFilter}
-      ORDER BY w.fecha_actividad DESC, w.id_actividad DESC
-      LIMIT :limit OFFSET :offset`,
-    { replacements, type: QueryTypes.SELECT },
-  );
-  return {
-    data: rows,
-    pagination: { page, limit, total: Number(count.total), pages: Math.ceil(Number(count.total) / limit) },
-  };
+  return procedurePage(await call('sp_listar_actividad', [id_cliente, id_vendedor, limit, offset]), page, limit, row => ({ ...row, es_retorno: Boolean(Number(row.es_retorno)) }));
 }
 
-// Recalcula los puntajes desde el registro histórico de actividades.
-export async function recalculateLeadScores(usuario) {
-  return sequelize.transaction(async (transaction) => {
-    const clients = await Cliente.findAll({ transaction, lock: transaction.LOCK.UPDATE });
-    const scores = await sequelize.query(
-      `SELECT id_cliente, COALESCE(SUM(puntaje_otorgado), 0) AS puntaje
-         FROM actividad_web GROUP BY id_cliente`,
-      { type: QueryTypes.SELECT, transaction },
-    );
-    const scoreByClient = new Map(scores.map((row) => [Number(row.id_cliente), Number(row.puntaje)]));
-    const qualified = [];
-    let changed = 0;
-    for (const client of clients) {
-      const previousScore = Number(client.puntaje_total || 0);
-      const nextScore = scoreByClient.get(client.id_cliente) || 0;
-      const previousState = client.estado_cliente;
-      const nextState = ['Cliente', 'Inactivo'].includes(previousState) ? previousState : leadState(nextScore);
-      if (previousScore === nextScore && previousState === nextState) continue;
-      await client.update({ puntaje_total: nextScore, estado_cliente: nextState }, { transaction });
-      await registerChanges({
-        tabla: 'clientes', idRegistro: client.id_cliente, usuario, transaction,
-        cambios: { puntaje_total: [previousScore, nextScore], estado_cliente: [previousState, nextState] },
-      });
-      changed += 1;
-      if (previousState !== 'Calificado' && nextState === 'Calificado') qualified.push(client.id_cliente);
-    }
-    let assignedQualified = [];
-    if (qualified.length) {
-      const assignments = await sequelize.query(
-        `SELECT DISTINCT id_cliente FROM asignaciones_crm
-          WHERE estado = 'Activa' AND id_cliente IN (:ids)`,
-        { replacements: { ids: qualified }, type: QueryTypes.SELECT, transaction },
+
+/** Pide a la base de datos que realice la operación de este módulo.
+ * Devuelve los datos o informa el problema y deja disponible la conexión.
+ * La base de datos se encarga de guardar o deshacer los cambios.
+ */
+async function call(name, parameters = []) {
+  if (!['sp_actividad_lote', 'sp_listar_actividad', 'sp_registrar_actividad'].includes(name)) throw new Error('Procedimiento no permitido.');
+  const connection = await sequelize.connectionManager.getConnection({ type: 'WRITE' });
+  try {
+    const results = await new Promise((resolve, reject) => {
+      connection.query(
+        `CALL ${name}(${parameters.map(() => '?').join(',')})`,
+        parameters.map(value => value === undefined ? null : value),
+        (error, rows) => error ? reject(error) : resolve(rows),
       );
-      assignedQualified = assignments.map((row) => Number(row.id_cliente));
+    });
+    // Conserva las listas de datos que devuelve la consulta.
+    return results.filter(Array.isArray);
+  } catch (error) {
+    const status = { 30001: 400, 30003: 403, 30004: 404, 30009: 409, 1062: 409, 1452: 400, 3819: 400, 1406: 400 }[error.errno];
+    if (status) {
+      const message = error.errno === 1062 ? 'El nombre o dato único ya está registrado.'
+        : error.errno === 1452 ? 'La referencia indicada no existe.'
+          : error.errno === 3819 ? 'Alguno de los valores enviados no está permitido.'
+            : error.errno === 1406 ? 'Alguno de los textos enviados es demasiado largo.'
+              : error.sqlMessage;
+      throw httpError(status, message);
     }
-    return { clientes_revisados: clients.length, clientes_actualizados: changed, prospectos_calificados: assignedQualified };
-  });
+    throw error;
+  } finally {
+    await sequelize.connectionManager.releaseConnection(connection);
+  }
 }
+
+/** Prepara la página solicitada y el total de resultados. */
+function procedurePage(sets, page, limit, transform = row => row) {
+  const total = Number(sets[1]?.[0]?.total || 0);
+  return { data: (sets[0] || []).map(transform), pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+}
+
+/** Prepara los datos recibidos para que la aplicación pueda leerlos. */
+const procedureJson = value => typeof value === 'string' ? JSON.parse(value) : value;

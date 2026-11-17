@@ -1,8 +1,7 @@
-/**
- * Recibe las solicitudes de acciones marketing, las entrega al servicio correspondiente y comunica el resultado.
+/** HU-14 - Acciones de marketing.
+ * Recibe las solicitudes y devuelve las respuestas.
  */
 import * as marketingActions from '../service/AccionesMarketing.service.js';
-import * as scoring from '../service/MarketingScoring.service.js';
 
 // HU-14: Presenta las acciones disponibles y las veces registradas.
 export async function list(req, res, next) {
@@ -11,7 +10,7 @@ export async function list(req, res, next) {
 
 // HU-14: Registra una acción de marketing.
 export async function create(req, res, next) {
-  try { res.status(201).json(await marketingActions.createMarketingAction(req.body)); } catch (error) { next(error); }
+  try { res.status(201).json(await marketingActions.createMarketingAction(req.body, req.user)); } catch (error) { next(error); }
 }
 
 // HU-14: Modifica el nombre o el puntaje de una acción.
@@ -24,7 +23,3 @@ export async function changeStatus(req, res, next) {
   try { res.json(await marketingActions.changeMarketingActionState(req.body, req.user)); } catch (error) { next(error); }
 }
 
-// HU-16: Vuelve a calcular los puntajes desde el historial.
-export async function recalculate(_req, res, next) {
-  try { res.json(await scoring.recalculateLeadScores(_req.user)); } catch (error) { next(error); }
-}

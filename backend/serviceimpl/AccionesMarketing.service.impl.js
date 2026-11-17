@@ -1,5 +1,5 @@
-/**
- * Valida los datos y coordina las operaciones necesarias para gestionar acciones marketing.
+/** HU-14 - Acciones de marketing.
+ * Revisa los datos y coordina las operaciones del módulo.
  */
 import {
   changeMarketingActionStatus,
@@ -9,7 +9,7 @@ import {
 } from '../repository/AccionesMarketing.repository.js';
 import { httpError, pagination, requireId, requireText } from '../utils/validators.js';
 
-/** Apoya la gestión de accionesmarketing mediante una tarea interna del sistema. */
+/** Interpreta si el elemento debe quedar activo o inactivo y rechaza valores no permitidos. */
 function parseState(value) {
   if (value === undefined || value === null || value === '') return undefined;
   if ([true, 1, '1', 'true', 'activa', 'Activa'].includes(value)) return true;
@@ -17,9 +17,10 @@ function parseState(value) {
   throw httpError(400, 'estado debe ser activo o inactivo.');
 }
 
-/** Apoya la gestión de accionesmarketing mediante una tarea interna del sistema. */
+/** Comprueba el nombre de la acción y que su puntaje sea un entero entre 0 y 100. */
 function actionData(data = {}) {
   const nombre_accion = requireText(data.nombre_accion, 'El nombre de la acción', 100);
+  if (data.puntaje === null || data.puntaje === '' || typeof data.puntaje === 'boolean') throw httpError(400, 'El puntaje debe ser un número entero entre 0 y 100.');
   const puntaje = Number(data.puntaje);
   if (!Number.isInteger(puntaje) || puntaje < 0 || puntaje > 100) {
     throw httpError(400, 'El puntaje debe ser un número entero entre 0 y 100.');
@@ -37,8 +38,8 @@ export async function listMarketingActions(query = {}) {
 }
 
 // HU-14: Crea una acción disponible para futuras actividades.
-export async function createMarketingAction(data = {}) {
-  const id_accion = await saveMarketingAction(actionData(data));
+export async function createMarketingAction(data = {}, user = {}) {
+  const id_accion = await saveMarketingAction(actionData(data), user.email);
   return { id_accion, message: 'Acción de marketing registrada correctamente.' };
 }
 

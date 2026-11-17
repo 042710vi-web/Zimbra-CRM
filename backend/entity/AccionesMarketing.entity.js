@@ -1,5 +1,5 @@
-/**
- * Describe los datos de acciones marketing que el sistema registra en la base de datos.
+/** HU-14 - Acciones de marketing.
+ * Describe los campos que se guardan en la base de datos.
  */
 import { DataTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';

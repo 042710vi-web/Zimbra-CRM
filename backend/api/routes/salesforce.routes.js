@@ -10,8 +10,8 @@ import { allowRoles } from '../middleware/role.middleware.js';
 const router = Router();
 
 router.use(authenticate);
-router.post('/sincronizar', allowRoles('Administrador', 'Marketing'), syncClient);
-router.get('/sincronizaciones', allowRoles('Administrador', 'Marketing'), syncHistory);
-router.post('/reintentar', allowRoles('Administrador', 'Marketing'), retrySync);
+router.post('/sincronizar', allowRoles('Administrador'), syncClient);
+router.get('/sincronizaciones', allowRoles('Administrador'), syncHistory);
+router.post('/reintentar', allowRoles('Administrador'), retrySync);
 
 export default router;

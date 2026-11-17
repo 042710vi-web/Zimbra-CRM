@@ -1,5 +1,5 @@
-/**
- * Presenta las operaciones que otras partes del sistema pueden utilizar para gestionar descargas prueba.
+/** HU-09 a HU-11 - Descargas de prueba.
+ * Permite usar las operaciones del módulo desde otras partes del sistema.
  */
 export {
   expireTrialDates,

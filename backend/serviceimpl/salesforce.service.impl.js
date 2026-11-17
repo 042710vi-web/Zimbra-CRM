@@ -135,7 +135,7 @@ async function runSync(id_cliente) {
       id_sincronizacion: attempt.id_sincronizacion,
       id_cliente,
       objeto_salesforce,
-      estado: 'Sincronizada',
+      estado: 'Sincronizado',
       salesforce: result,
     };
   } catch (error) {

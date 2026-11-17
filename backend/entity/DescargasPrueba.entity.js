@@ -1,5 +1,5 @@
-/**
- * Describe los datos de descargas prueba que el sistema registra en la base de datos.
+/** HU-09 a HU-11 - Descargas de prueba.
+ * Describe los campos que se guardan en la base de datos.
  */
 import { DataTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';

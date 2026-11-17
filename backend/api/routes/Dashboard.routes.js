@@ -1,5 +1,5 @@
-/**
- * Define las direcciones para consultar y gestionar dashboard.
+/** HU-31 - Panel comercial.
+ * Direcciones disponibles y permisos de acceso.
  */
 import { Router } from 'express';
 import { getDashboard } from '../../apicontroller/Dashboard.controller.js';
@@ -8,5 +8,5 @@ import { allowRoles } from '../middleware/role.middleware.js';
 
 const router = Router();
 router.get('/', authenticate, allowRoles('Administrador', 'Vendedor'), getDashboard);
-/** Pone las direcciones de esta área a disposición de la aplicación. */
+/** Permite que la aplicación use las rutas de este módulo. */
 export default router;

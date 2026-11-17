@@ -18,5 +18,8 @@ export async function sendAutomatedEmail(data = {}) {
   const id_cliente = Number(data.id_cliente);
   if (!Number.isInteger(id_cliente) || id_cliente < 1) throw invalid('id_cliente debe ser entero positivo.');
   if (typeof data.evento !== 'string' || !data.evento.trim()) throw invalid('evento es obligatorio.');
-  return sendEmail({ id_cliente, evento: data.evento.trim(), variables: data.variables || {} });
+  // HU-09/HU-11: el contexto opcional distingue avisos de diferentes descargas.
+  const id_descarga = data.id_descarga === undefined ? undefined : Number(data.id_descarga);
+  if (id_descarga !== undefined && (!Number.isInteger(id_descarga) || id_descarga < 1)) throw invalid('id_descarga debe ser entero positivo.');
+  return sendEmail({ id_cliente, id_descarga, evento: data.evento.trim(), variables: data.variables || {} });
 }

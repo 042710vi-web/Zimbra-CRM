@@ -50,6 +50,18 @@ export async function createClient(data) {
 // Si hay clave de rastreo, asocia sus actividades web previas al cliente.
 export async function upsertPublicLead(data, clave_rastreo) {
   return sequelize.transaction(async (transaction) => {
+    // HU-04/HU-15: coordina formulario y eventos con el mismo bloqueo de visitante.
+    let visitante;
+    if (clave_rastreo) {
+      await sequelize.query(
+        'INSERT INTO visitantes_web(clave_rastreo) VALUES (:clave) ON DUPLICATE KEY UPDATE clave_rastreo = VALUES(clave_rastreo)',
+        { replacements: { clave: clave_rastreo }, transaction },
+      );
+      [visitante] = await sequelize.query(
+        'SELECT id_cliente FROM visitantes_web WHERE clave_rastreo = :clave FOR UPDATE',
+        { replacements: { clave: clave_rastreo }, type: QueryTypes.SELECT, transaction },
+      );
+    }
     const correo = data.correo_electronico.trim().toLowerCase();
     let client = await Cliente.findOne({
       where: { correo_electronico: correo },
@@ -96,11 +108,19 @@ export async function upsertPublicLead(data, clave_rastreo) {
     }
 
     if (clave_rastreo) {
+      if (visitante.id_cliente && Number(visitante.id_cliente) !== Number(client.id_cliente)) {
+        throw Object.assign(new Error('La clave del visitante ya pertenece a otro cliente.'), { status: 409 });
+      }
+      await sequelize.query(
+        'UPDATE visitantes_web SET id_cliente = :id_cliente WHERE clave_rastreo = :clave_rastreo',
+        { replacements: { id_cliente: client.id_cliente, clave_rastreo }, transaction },
+      );
       await sequelize.query(
         `UPDATE actividad_web
          SET id_cliente = :id_cliente,
              clave_rastreo = NULL
-         WHERE clave_rastreo = :clave_rastreo`,
+         WHERE clave_rastreo = :clave_rastreo AND id_cliente IS NULL
+         ORDER BY fecha_actividad, id_actividad`,
         {
           replacements: {
             id_cliente: client.id_cliente,
@@ -227,7 +247,7 @@ export async function findClientDetail(id_cliente) {
 
       sequelize.query(
         `SELECT aw.id_actividad, aw.fecha_actividad, aw.detalle,
-                ac.nombre_accion, ac.puntaje, cm.nombre_campana
+                ac.nombre_accion, aw.puntaje_otorgado AS puntaje, aw.es_retorno, cm.nombre_campana
          FROM actividad_web aw
          JOIN acciones_marketing ac ON ac.id_accion = aw.id_accion
          LEFT JOIN campanas_marketing cm ON cm.id_campana = aw.id_campana
@@ -274,7 +294,7 @@ export async function findClientDetail(id_cliente) {
       asignaciones: assignments,
       pruebas: trials,
       actividadWeb: activities,
-      interacciones,
+      interacciones: interactions,
       ventas: sales,
     },
   };

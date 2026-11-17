@@ -1,5 +1,5 @@
-/**
- * Describe los datos de productos que el sistema registra en la base de datos.
+/** HU-07 y HU-08 - Productos y licencias.
+ * Describe los campos que se guardan en la base de datos.
  */
 import { DataTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';

@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "start": "node api/server.js", "dev": "nodemon api/server.js" },
+  "scripts": {
+    "start": "node api/server.js",
+    "dev": "nodemon api/server.js"
+  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",

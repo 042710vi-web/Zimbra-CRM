@@ -1,5 +1,5 @@
-/**
- * Valida los datos y coordina las operaciones necesarias para gestionar dashboard.
+/** HU-31 - Panel comercial.
+ * Revisa los datos y coordina las operaciones del módulo.
  */
 import { getDashboard as readDashboard } from '../repository/Dashboard.repository.js';
 import { httpError, requireId } from '../utils/validators.js';

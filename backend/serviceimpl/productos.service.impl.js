@@ -1,26 +1,28 @@
-/**
- * Valida los datos y coordina las operaciones necesarias para gestionar productos.
+/** HU-07 y HU-08 - Productos y licencias.
+ * Revisa los datos y coordina las operaciones del módulo.
  */
 import {
   changeProductStatus as saveProductStatus,
   createProduct,
   listProducts as readProducts,
   updateProduct as saveProduct,
-} from '../repository/Productos.repository.js';
+} from '../repository/productos.repository.js';
 import { httpError, pagination, requireId, requireOneOf, requireText } from '../utils/validators.js';
 
 const LICENSE_TYPES = ['Gratuita', 'Prueba 60 dias', 'Comercial'];
 
-/** Apoya la gestión de productos mediante una tarea interna del sistema. */
+/** Comprueba que las licencias gratuitas y de prueba valgan cero y las comerciales tengan un precio mayor que cero. */
 function validatePrice(type, value) {
+  if (value === null || value === '' || typeof value === 'boolean') throw httpError(400, 'El precio debe ser numérico.');
   const price = Number(value);
   if (!Number.isFinite(price) || price < 0) throw httpError(400, 'El precio debe ser un número igual o mayor que cero.');
-  if (type === 'Comercial' && price <= 0) throw httpError(400, 'Una licencia comercial debe tener un precio mayor que cero.');
+  if (price > 99999999.99) throw httpError(400, 'El precio supera el máximo permitido.');
+  if (type === 'Comercial' && Number(price.toFixed(2)) <= 0) throw httpError(400, 'Una licencia comercial debe tener un precio mayor que cero.');
   if (type !== 'Comercial' && price !== 0) throw httpError(400, 'Las licencias gratuitas y de prueba deben tener precio cero.');
   return Number(price.toFixed(2));
 }
 
-/** Apoya la gestión de productos mediante una tarea interna del sistema. */
+/** Revisa el nombre, la licencia y el precio antes de guardar el producto. */
 function validateProduct(data = {}) {
   const nombre_producto = requireText(data.nombre_producto, 'El nombre del producto', 100);
   const tipo_licencia = requireOneOf(data.tipo_licencia, 'El tipo de licencia', LICENSE_TYPES);
@@ -28,7 +30,7 @@ function validateProduct(data = {}) {
   return { nombre_producto, tipo_licencia, precio };
 }
 
-/** Apoya la gestión de productos mediante una tarea interna del sistema. */
+/** Interpreta si el elemento debe quedar activo o inactivo y rechaza valores no permitidos. */
 function parseState(value) {
   if (value === undefined || value === null || value === '') return undefined;
   if ([true, 1, '1', 'true', 'activo', 'Activa'].includes(value)) return true;
@@ -48,9 +50,9 @@ export async function listProducts(query = {}, user = {}) {
 }
 
 // HU-07: Valida los datos antes de registrar un producto activo.
-export async function registerProduct(data = {}) {
+export async function registerProduct(data = {}, user = {}) {
   const product = validateProduct(data);
-  const id_producto = await createProduct(product);
+  const id_producto = await createProduct(product, user.email);
   return { id_producto, message: 'Producto registrado correctamente.' };
 }
 
