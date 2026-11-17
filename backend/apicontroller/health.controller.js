@@ -1,3 +1,6 @@
+/**
+ * Recibe las solicitudes de health, las entrega al servicio correspondiente y comunica el resultado.
+ */
 import { sequelize } from '../config/database.js';
 
 // Endpoint técnico común, sin HU de negocio asignada en el documento.

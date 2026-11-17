@@ -3,8 +3,18 @@ import { login as loginRequest } from '../services/auth.service.js';
 
 const AuthContext = createContext(null);
 
+function normalizeSession(value) {
+  const candidate = value?.data?.token ? value.data : value;
+  if (!candidate?.token || !candidate?.user || typeof candidate.user !== 'object') return null;
+  return { token: candidate.token, user: candidate.user };
+}
+
 function getStoredSession() {
-  try { return JSON.parse(sessionStorage.getItem('zimbra-session') || 'null'); }
+  try {
+    const session = normalizeSession(JSON.parse(sessionStorage.getItem('zimbra-session') || 'null'));
+    if (!session) sessionStorage.removeItem('zimbra-session');
+    return session;
+  }
   catch { return null; }
 }
 
@@ -12,14 +22,15 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(getStoredSession);
 
   const login = useCallback(async (credentials) => {
-    const result = await loginRequest(credentials);
+    const result = normalizeSession(await loginRequest(credentials));
+    if (!result) throw new Error('El servidor respondió sin los datos de sesión esperados.');
     sessionStorage.setItem('zimbra-session', JSON.stringify(result));
     setSession(result);
     return result;
   }, []);
 
   const logout = useCallback(() => {
-    // HU-02: cerrar sesión elimina el token local; no requiere endpoint remoto.
+    // HU-01: cerrar sesión elimina el token local; no requiere endpoint remoto.
     sessionStorage.removeItem('zimbra-session');
     setSession(null);
   }, []);
