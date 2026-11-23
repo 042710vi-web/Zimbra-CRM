@@ -5,6 +5,7 @@ import {
   findSyncAttempt,
   listSyncAttempts,
   markSyncFailure,
+  markSimulatedSyncFailure,
   markSyncSuccess,
 } from '../repository/salesforce.repository.js';
 
@@ -21,8 +22,8 @@ function configurationError() {
 
   if (missing.length) {
     throw Object.assign(
-      new Error(`Falta configurar: ${missing.join(', ')}`),
-      { status: 500 },
+      new Error('Fallo simulado de conexión'),
+      { status: 502, simulated: true },
     );
   }
 }
@@ -139,10 +140,14 @@ async function runSync(id_cliente) {
       salesforce: result,
     };
   } catch (error) {
-    await markSyncFailure({
-      id_sincronizacion: attempt.id_sincronizacion,
-      mensaje_error: error.message,
-    });
+    if (error.simulated) {
+      await markSimulatedSyncFailure(attempt.id_sincronizacion);
+    } else {
+      await markSyncFailure({
+        id_sincronizacion: attempt.id_sincronizacion,
+        mensaje_error: error.message,
+      });
+    }
     throw Object.assign(
       new Error(`Falló la sincronización. Quedó guardada para reintentar: ${error.message}`),
       { status: 502 },
@@ -172,4 +177,33 @@ export async function getSalesforceSyncHistory(query = {}) {
   const estado = query.estado ? String(query.estado).slice(0, 20) : undefined;
 
   return listSyncAttempts({ page, limit, estado });
+}
+const qualifiedSyncsInFlight = new Map();
+
+async function syncQualifiedClientIfPending(id_cliente) {
+  if (qualifiedSyncsInFlight.has(id_cliente)) return qualifiedSyncsInFlight.get(id_cliente);
+  const task = (async () => {
+    try {
+      const client = await findClientForSalesforce(id_cliente);
+      if (!client || client.estado_cliente !== 'Calificado' || client.estado_salesforce !== 'Pendiente') {
+        return { id_cliente, estado: 'No requerido' };
+      }
+      return await syncClientToSalesforce(id_cliente);
+    } catch (error) {
+      // El evento y su calificación ya se confirmaron antes de intentar Salesforce.
+      console.error(`No se pudo sincronizar el prospecto calificado ${id_cliente}:`, error.message);
+      return { id_cliente, estado: 'Fallido', mensaje: error.message };
+    }
+  })();
+  qualifiedSyncsInFlight.set(id_cliente, task);
+  try {
+    return await task;
+  } finally {
+    if (qualifiedSyncsInFlight.get(id_cliente) === task) qualifiedSyncsInFlight.delete(id_cliente);
+  }
+}
+
+export async function syncQualifiedClients(ids = []) {
+  const clients = [...new Set(ids.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))];
+  return Promise.all(clients.map(syncQualifiedClientIfPending));
 }

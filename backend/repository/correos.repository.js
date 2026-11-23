@@ -29,7 +29,9 @@ export async function sendAutomatedEmail({ id_cliente, id_descarga, evento, vari
   // El flujo sin contexto de descarga conserva el contrato general de HU-19.
   let reserva;
   if (id_descarga !== undefined) {
-    reserva = await callProcedure('sp_reservar_correo_prueba', [id_cliente, id_descarga, evento, subject, body]);
+    const [rows] = await callProcedure('sp_reservar_correo_prueba', [id_cliente, id_descarga, evento, subject, body]);
+    reserva = rows?.[0];
+    if (!reserva) throw new Error('La reserva de correo no devolvió un resultado.');
     if (reserva.estado_correo === 'Enviado') return { id_cliente, evento, estado_correo: 'Enviado', duplicado: true };
     if (reserva.estado_correo === 'Fallido') return retryEmail(reserva.id_correo);
   }

@@ -5,8 +5,8 @@ import { QueryTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
 import { Cliente } from '../entity/Clientes.entity.js';
 import { Empresa } from '../entity/Empresas.entity.js';
-import { Asignacion } from '../entity/AsignacionesCrm.entity.js';
 import { registerChanges } from './AuditoriaCambios.repository.js';
+import { callProcedure } from './storedProcedures.repository.js';
 
 async function resolveCompanyId(data, transaction) {
   if (data.id_empresa) return Number(data.id_empresa);
@@ -27,23 +27,14 @@ async function resolveCompanyId(data, transaction) {
 
 /** Realiza la consulta o el cambio de información solicitado. */
 export async function createClient(data) {
-  return sequelize.transaction(async (transaction) => {
-    const id_empresa = await resolveCompanyId(data, transaction);
-
-    const client = await Cliente.create(
-      {
-        id_empresa,
-        nombre_completo: data.nombre_completo.trim(),
-        correo_electronico: data.correo_electronico.trim().toLowerCase(),
-        telefono: data.telefono || null,
-        estado_cliente: 'Frio',
-        puntaje_total: 0,
-      },
-      { transaction },
-    );
-
-    return client.id_cliente;
-  });
+  const id_empresa = await sequelize.transaction((transaction) => resolveCompanyId(data, transaction));
+  const [rows] = await callProcedure('sp_registrar_cliente', [
+    id_empresa,
+    data.nombre_completo.trim(),
+    data.correo_electronico.trim().toLowerCase(),
+    data.telefono || null,
+  ]);
+  return Number(rows[0]?.id_cliente);
 }
 
 // HU-04: crea o actualiza un lead enviado desde el sitio público.
@@ -152,24 +143,7 @@ export async function findClients({ q, estado, page, limit, offset }) {
       AND (:estado IS NULL OR c.estado_cliente = :estado)
   `;
 
-  const data = await sequelize.query(
-    `SELECT
-        c.id_cliente,
-        c.id_empresa,
-        c.nombre_completo,
-        c.correo_electronico,
-        c.telefono,
-        c.fecha_registro,
-        c.puntaje_total,
-        c.estado_cliente,
-        e.nombre_empresa
-     FROM clientes c
-     LEFT JOIN empresas e ON e.id_empresa = c.id_empresa
-     ${where}
-     ORDER BY c.fecha_registro DESC, c.id_cliente DESC
-     LIMIT :limit OFFSET :offset`,
-    { replacements, type: QueryTypes.SELECT },
-  );
+  const [data] = await callProcedure('sp_listar_clientes', [q || null, estado || null, limit, offset]);
 
   const [count] = await sequelize.query(
     `SELECT COUNT(*) AS total
@@ -287,7 +261,6 @@ export async function findClientDetail(id_cliente) {
         },
       ),
     ]);
-
   return {
     ...client,
     historial: {
@@ -301,49 +274,16 @@ export async function findClientDetail(id_cliente) {
 }
 
 export async function updateClient(data, usuario) {
-  return sequelize.transaction(async (transaction) => {
-    const client = await Cliente.findByPk(data.id_cliente, {
-      transaction,
-      lock: transaction.LOCK.UPDATE,
-    });
-
-    if (!client) {
-      throw Object.assign(
-        new Error('El cliente indicado no existe.'),
-        { status: 404 },
-      );
-    }
-
-    const before = client.get({ plain: true });
-    const id_empresa =
-      data.id_empresa !== undefined || data.nombre_empresa
-        ? await resolveCompanyId(data, transaction)
-        : before.id_empresa;
-
-    const next = {
-      nombre_completo: data.nombre_completo,
-      correo_electronico: data.correo_electronico,
-      telefono: data.telefono,
-      id_empresa,
-    };
-
-    await client.update(next, { transaction });
-
-    await registerChanges({
-      tabla: 'clientes',
-      idRegistro: client.id_cliente,
-      usuario,
-      transaction,
-      cambios: Object.fromEntries(
-        Object.keys(next).map((field) => [
-          field,
-          [before[field], next[field]],
-        ]),
-      ),
-    });
-
-    return client.id_cliente;
-  });
+  const existing = await Cliente.findByPk(data.id_cliente);
+  if (!existing) throw Object.assign(new Error('El cliente indicado no existe.'), { status: 404 });
+  const id_empresa = data.id_empresa !== undefined || data.nombre_empresa
+    ? await sequelize.transaction((transaction) => resolveCompanyId(data, transaction))
+    : existing.id_empresa;
+  const [rows] = await callProcedure('sp_actualizar_cliente', [
+    data.id_cliente, id_empresa, data.nombre_completo,
+    data.correo_electronico, data.telefono || null,
+  ]);
+  return Number(rows[0]?.id_cliente || data.id_cliente);
 }
 
 // Al inactivar un cliente, finaliza sus asignaciones activas en la misma transacción.
@@ -351,65 +291,6 @@ export async function updateClientStatus(
   { id_cliente, estado_cliente },
   usuario,
 ) {
-  return sequelize.transaction(async (transaction) => {
-    const client = await Cliente.findByPk(id_cliente, {
-      transaction,
-      lock: transaction.LOCK.UPDATE,
-    });
-
-    if (!client) {
-      throw Object.assign(
-        new Error('El cliente indicado no existe.'),
-        { status: 404 },
-      );
-    }
-
-    const previousStatus = client.estado_cliente;
-
-    await client.update({ estado_cliente }, { transaction });
-
-    await registerChanges({
-      tabla: 'clientes',
-      idRegistro: id_cliente,
-      usuario,
-      transaction,
-      cambios: {
-        estado_cliente: [previousStatus, estado_cliente],
-      },
-    });
-
-    if (estado_cliente === 'Inactivo') {
-      const activeAssignments = await Asignacion.findAll({
-        where: {
-          id_cliente,
-          estado: 'Activa',
-        },
-        transaction,
-        lock: transaction.LOCK.UPDATE,
-      });
-
-      for (const assignment of activeAssignments) {
-        await assignment.update(
-          {
-            estado: 'Finalizada',
-            fecha_fin: new Date(),
-          },
-          { transaction },
-        );
-
-        await registerChanges({
-          tabla: 'asignaciones_crm',
-          idRegistro: assignment.id_asignacion,
-          usuario,
-          transaction,
-          cambios: {
-            estado: ['Activa', 'Finalizada'],
-            fecha_fin: [null, new Date().toISOString()],
-          },
-        });
-      }
-    }
-
-    return true;
-  });
+  await callProcedure('sp_cambiar_estado_cliente', [id_cliente, estado_cliente]);
+  return true;
 }

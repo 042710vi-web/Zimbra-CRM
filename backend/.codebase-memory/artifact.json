@@ -1,12 +1,11 @@
 {
     "schema_version": 2,
-    "commit": "5361deabe8b024f6a479f99373fbf09d56f88df2",
-    "indexed_at": "2026-11-16T03:44:10Z",
+    "commit": "e38bcc6f1d71607535cb3f264d2fd9335cd4c68b",
+    "indexed_at": "2026-11-23T03:43:14Z",
     "project": "C-Users-Acer-OneDrive-uniminuto.edu-5to-Semestre-Sistemas-transaccionales-3er-Corte-Zimbra-CRM-backend",
-    "nodes": 741,
-    "edges": 1970,
-    "original_size": 4980736,
-    "compressed_size": 650791,
-    "compression_level": 9,
-    "reconcile_basis": "git-clean-head"
+    "nodes": 810,
+    "edges": 2191,
+    "original_size": 7471104,
+    "compressed_size": 937814,
+    "compression_level": 3
 }

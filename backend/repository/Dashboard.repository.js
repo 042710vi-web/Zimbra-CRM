@@ -1,6 +1,7 @@
 /** HU-31 - Panel comercial.
  * Consulta y guarda los datos mediante las operaciones de la base de datos.
  */
+import { withSellerNames } from './Alertas.repository.js';
 import { sequelize } from '../config/database.js';
 import { httpError } from '../utils/validators.js';
 /** Consulta juntos los prospectos, pruebas, ventas, asignaciones y alertas del panel. */
@@ -11,7 +12,7 @@ export async function getDashboard({ id_vendedor }) {
     pruebas_por_vencer: trials.map(row => ({ ...row, dias_restantes: Number(row.dias_restantes) })),
     ventas_pendientes: { cantidad: Number(sales[0].cantidad), total_proyectado: Number(sales[0].total_proyectado) },
     asignaciones_activas: Number(assignments[0].clientes_asignados),
-    alertas_pendientes: alerts,
+    alertas_pendientes: await withSellerNames(alerts),
   };
 }
 

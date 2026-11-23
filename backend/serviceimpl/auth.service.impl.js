@@ -4,6 +4,7 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 
+import { Vendedor } from '../entity/Vendedores.entity.js';
 import { findUserByEmail } from '../repository/Usuarios.repository.js';
 import { consumeRecoveryToken, createRecoveryToken } from '../repository/RecuperacionClaves.repository.js';
 
@@ -65,11 +66,13 @@ export async function login({ email, password } = {}) {
     );
   }
 
+  const vendedor = user.id_vendedor ? await Vendedor.findByPk(user.id_vendedor, { attributes: ['nombre_vendedor'] }) : null;
+
   return {
     token: signToken(user),
     user: {
       id: user.id_usuario,
-      name: user.nombre,
+      name: vendedor?.nombre_vendedor || (user.rol === 'Administrador' ? 'Administrador' : null),
       email: user.correo_acceso,
       role: user.rol,
       vendorId: user.id_vendedor,

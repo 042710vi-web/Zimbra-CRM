@@ -2,7 +2,7 @@
  * Define las direcciones para consultar y gestionar reportes.
  */
 import { Router } from 'express';
-import { assignments, automation, campaigns, clients, exportCsv, interactions, sales } from '../../apicontroller/reportes.controller.js';
+import { indicators, assignments, automation, campaigns, clients, exportCsv, interactions, sales } from '../../apicontroller/reportes.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { allowRoles } from '../middleware/role.middleware.js';
 
@@ -11,6 +11,7 @@ router.use(authenticate, allowRoles('Administrador'));
 // HU-29: genera reporte de ventas por periodo.
 // Endpoint: GET /api/reports/sales.
 router.get('/sales', sales);
+router.get('/indicators', indicators);
 // HU-29: agrupa clientes por estado.
 // Endpoint: GET /api/reports/clients.
 router.get('/clients', clients);

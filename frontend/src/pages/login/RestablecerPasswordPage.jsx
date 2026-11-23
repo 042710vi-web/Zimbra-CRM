@@ -1,3 +1,4 @@
+import DismissiblePanel from '../../components/common/DismissiblePanel.jsx';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Brand from '../../components/common/Brand.jsx';
@@ -73,9 +74,9 @@ export default function RestablecerPasswordPage() {
 
           {done ? (
             <>
-              <div className="notice success" role="status">
+              <DismissiblePanel as="div" noticeKey="password-reset-success" className="notice success" role="status">
                 Tu contraseña se actualizó correctamente.
-              </div>
+              </DismissiblePanel>
               <Link className="button primary full auth-button-link" to="/login">
                 Ir a iniciar sesión <span>→</span>
               </Link>

@@ -1,6 +1,7 @@
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
 import { SalesforceSync } from '../entity/salesforce-sync.entity.js';
+import { callProcedure } from './storedProcedures.repository.js';
 
 export async function findClientForSalesforce(id_cliente) {
   const rows = await sequelize.query(
@@ -10,6 +11,7 @@ export async function findClientForSalesforce(id_cliente) {
        c.correo_electronico,
        c.telefono,
        c.estado_cliente,
+       c.estado_salesforce,
        e.nombre_empresa
      FROM clientes c
      LEFT JOIN empresas e ON e.id_empresa = c.id_empresa
@@ -72,11 +74,36 @@ export async function findSyncAttempt(id_sincronizacion) {
 
 export async function listSyncAttempts({ page = 1, limit = 20, estado } = {}) {
   const where = estado ? { estado } : {};
+  const [rows] = await callProcedure('sp_consultar_sincronizaciones_salesforce', [
+    estado || null, null, null, null, limit, (page - 1) * limit,
+  ]);
+  const count = await SalesforceSync.count({ where });
+  return { count, rows };
+}
 
-  return SalesforceSync.findAndCountAll({
-    where,
-    order: [['fecha_creacion', 'DESC']],
-    limit,
-    offset: (page - 1) * limit,
+export async function markSimulatedSyncFailure(id_sincronizacion) {
+  return sequelize.transaction(async (transaction) => {
+    // Bloquea en un orden estable para reservar el siguiente ID sin otra tabla.
+    const rows = await sequelize.query(
+      'SELECT id_sincronizacion, salesforce_id FROM salesforce_sincronizaciones ORDER BY id_sincronizacion FOR UPDATE',
+      { type: QueryTypes.SELECT, transaction },
+    );
+    const current = rows.find((row) => String(row.id_sincronizacion) === String(id_sincronizacion));
+    if (!current) throw Object.assign(new Error('El intento de sincronización no existe.'), { status: 404 });
+    const ids = rows.map((row) => /^SF-(\d+)$/.exec(row.salesforce_id || '')).filter(Boolean).map((match) => Number(match[1]));
+    const next = Math.max(0, ...ids) + 1;
+    if (!Number.isSafeInteger(next)) throw new Error('Se agotó el consecutivo simulado de Salesforce.');
+    const salesforce_id = current.salesforce_id || `SF-${next}`;
+    await SalesforceSync.update(
+      {
+        estado: 'Fallido',
+        salesforce_id,
+        mensaje_error: 'Fallo simulado de conexión',
+        intentos: sequelize.literal('intentos + 1'),
+        fecha_actualizacion: new Date(),
+      },
+      { where: { id_sincronizacion }, transaction },
+    );
+    return salesforce_id;
   });
 }

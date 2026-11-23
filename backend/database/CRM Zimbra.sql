@@ -90,13 +90,14 @@ CREATE TABLE productos (
    tráfico con control de fechas. */
 CREATE TABLE campanas_marketing (
     id_campana INT AUTO_INCREMENT PRIMARY KEY,
+    codigo_campana VARCHAR(50) NULL UNIQUE,
     nombre_campana VARCHAR(150) NOT NULL UNIQUE,
     descripcion TEXT,
-    presupuesto DECIMAL(12,2),
+    presupuesto DECIMAL(12,2) NOT NULL,
     fecha_inicio DATE,
     fecha_fin DATE,
     estado VARCHAR(20) DEFAULT 'Activa',
-    CONSTRAINT chk_presupuesto_campana CHECK (presupuesto IS NULL OR presupuesto >= 0),
+    CONSTRAINT chk_presupuesto_campana CHECK (presupuesto >= 0),
     CONSTRAINT chk_estado_campana CHECK (estado IN ('Activa','Inactiva')),
     CONSTRAINT chk_fechas_campana CHECK (fecha_fin >= fecha_inicio)
 );
@@ -110,20 +111,33 @@ CREATE TABLE acciones_marketing (
     CONSTRAINT chk_puntaje_positivo CHECK (puntaje BETWEEN 0 AND 100)
 );
 
+/* HU-15: El visitante conserva una clave hasta identificarse en HU-04.
+    Su fila se bloquea antes del cliente para coordinar formularios y eventos
+   concurrentes. La asociación persiste para las visitas posteriores. */
+CREATE TABLE visitantes_web (
+    clave_rastreo VARCHAR(100) PRIMARY KEY,
+    id_cliente INT NULL,
+    fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_cliente) REFERENCES clientes(id_cliente)
+) ENGINE = InnoDB;
+
 /* Registra cada interacción o evento que un cliente realiza dentro del
    sitio web. */
 CREATE TABLE actividad_web (
     id_actividad INT AUTO_INCREMENT PRIMARY KEY,
-    id_cliente INT NOT NULL,
+    id_cliente INT NULL,
     id_accion INT NOT NULL,
     id_campana INT,
+    clave_rastreo VARCHAR(100) NULL,
+    es_retorno BOOLEAN NOT NULL DEFAULT FALSE,
     fecha_actividad DATETIME DEFAULT CURRENT_TIMESTAMP,
     puntaje_otorgado INT NOT NULL DEFAULT 0,
     direccion_origen VARCHAR(255),
     detalle VARCHAR(255),
     FOREIGN KEY (id_cliente) REFERENCES clientes(id_cliente),
     FOREIGN KEY (id_accion) REFERENCES acciones_marketing(id_accion),
-    FOREIGN KEY (id_campana) REFERENCES campanas_marketing(id_campana)
+    FOREIGN KEY (id_campana) REFERENCES campanas_marketing(id_campana),
+    CONSTRAINT chk_actividad_identidad CHECK (id_cliente IS NOT NULL OR clave_rastreo IS NOT NULL)
 );
 
 /* Almacena la información general de cada contrato, método de pago y
@@ -301,21 +315,6 @@ CREATE TABLE salesforce_sincronizaciones (
     INDEX idx_sf_estado_fecha (estado, fecha_creacion),
     INDEX idx_sf_cliente_fecha (id_cliente, fecha_creacion)
 );
-
-/* HU-12/HU-13: nombre y código identifican de forma única a cada campaña.
-   Las campañas del conjunto de datos reciben un código legible estable. */
-ALTER TABLE campanas_marketing ADD codigo_campana VARCHAR(50) NULL;
-
-/* HU-15: el visitante conserva una clave hasta identificarse en HU-04.
-   Su fila se bloquea antes del cliente para coordinar formularios y eventos
-   concurrentes. La asociación persiste para las visitas posteriores. */
-CREATE TABLE visitantes_web(clave_rastreo VARCHAR(100) PRIMARY KEY, id_cliente INT NULL, fecha_creacion
-     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(id_cliente) REFERENCES clientes(id_cliente))
-     ENGINE = InnoDB;
-
-ALTER TABLE actividad_web MODIFY id_cliente INT NULL, ADD clave_rastreo VARCHAR(100) NULL, ADD es_retorno
-     BOOLEAN NOT NULL DEFAULT FALSE, ADD CONSTRAINT chk_actividad_identidad CHECK(id_cliente IS NOT NULL OR
-     clave_rastreo IS NOT NULL);
 
 -- =====================================================================
 -- 3. Inserciones y preparación de los datos iniciales
@@ -992,7 +991,7 @@ JOIN (
 SET v.total_venta = d.total_detalle
 WHERE v.id_venta > 0;
 
--- Alertas: prospectos calificados, retornos y pruebas por vencer/vencidas
+-- Alertas: Prospectos calificados, retornos y pruebas por vencer/vencidas
 INSERT INTO alertas
     (id_cliente, id_vendedor, id_descarga, tipo_alerta, mensaje, clave_evento,
      estado_alerta, fecha_creacion, fecha_atencion, id_usuario_atendio, nota_atencion)
@@ -1018,7 +1017,7 @@ SELECT
 FROM clientes c
 WHERE c.id_cliente BETWEEN 1 AND 30;
 
--- Plantillas_correo: una plantilla activa por evento y versiones históricas inactivas
+-- Plantillas_correo: Una plantilla activa por evento y versiones históricas inactivas
 INSERT INTO plantillas_correo (evento, nombre_plantilla, asunto, cuerpo, estado) VALUES
 ('cliente_registrado','Bienvenida cliente v1','Bienvenido a Zimbra','Hola {{nombre}}, gracias por registrarte.',1),
 ('prueba_iniciada','Inicio de prueba v1','Tu prueba ha comenzado','Hola {{nombre}}, tu prueba vence el {{fecha_fin}}.',1),
@@ -1051,7 +1050,7 @@ INSERT INTO plantillas_correo (evento, nombre_plantilla, asunto, cuerpo, estado)
 ('prospecto_calificado','Prospecto calificado v6','Conozcamos tus necesidades','Hola {{nombre}}, queremos ayudarte.',0),
 ('venta_completada','Venta completada v6','Gracias por tu compra','Hola {{nombre}}, registramos tu compra.',0);
 
--- Correos_enviados: historial de envíos con reintentos e idempotencia
+-- Correos_enviados: Historial de envíos con reintentos e idempotencia
 INSERT INTO correos_enviados
     (id_cliente, id_plantilla, clave_idempotencia, evento, correo_destino,
      asunto_enviado, cuerpo_enviado, estado_correo, intentos, ultimo_error,
@@ -1074,7 +1073,7 @@ FROM clientes c
 JOIN plantillas_correo p ON p.id_plantilla = MOD(c.id_cliente - 1, 5) + 1
 WHERE c.id_cliente BETWEEN 1 AND 30;
 
--- Salesforce_sincronizaciones: historial de sincronizaciones con Salesforce
+-- Salesforce_sincronizaciones: Historial de sincronizaciones con Salesforce
 INSERT INTO salesforce_sincronizaciones
     (id_cliente,objeto_salesforce,operacion,estado,intentos,salesforce_id,mensaje_error)
 SELECT c.id_cliente,
@@ -1087,10 +1086,8 @@ FROM clientes c WHERE c.id_cliente BETWEEN 1 AND 30;
 
 UPDATE campanas_marketing
 SET
-    codigo_campana = CONCAT('CAM-', LPAD(id_campana, 6, '0'));
-
-ALTER TABLE campanas_marketing MODIFY codigo_campana VARCHAR(50) NOT NULL, ADD CONSTRAINT uq_campana_codigo
-     UNIQUE(codigo_campana);
+    codigo_campana = CONCAT('CAM-', LPAD(id_campana, 6, '0'))
+WHERE id_campana > 0;
 
 -- =====================================================================
 -- 4. Funciones
@@ -1256,12 +1253,13 @@ BEGIN
     DECLARE v_desplazamiento INT DEFAULT 0;
     SET v_limite=LEAST(GREATEST(COALESCE(p_limite,50),1),200);
     SET v_desplazamiento=GREATEST(COALESCE(p_desplazamiento,0),0);
-    SELECT c.id_cliente,c.nombre_completo,c.correo_electronico,c.telefono,
+    SELECT c.id_cliente,c.id_empresa,c.nombre_completo,c.correo_electronico,c.telefono,
            c.estado_cliente,c.puntaje_total,c.fecha_registro,e.nombre_empresa
     FROM clientes c LEFT JOIN empresas e ON e.id_empresa=c.id_empresa
     WHERE (p_busqueda IS NULL OR p_busqueda='' OR
            c.nombre_completo LIKE CONCAT('%',p_busqueda,'%') OR
-           c.correo_electronico LIKE CONCAT('%',p_busqueda,'%'))
+           c.correo_electronico LIKE CONCAT('%',p_busqueda,'%') OR
+           e.nombre_empresa LIKE CONCAT('%',p_busqueda,'%'))
       AND (p_estado IS NULL OR p_estado='' OR c.estado_cliente=p_estado)
     ORDER BY c.fecha_registro DESC,c.id_cliente DESC
     LIMIT v_desplazamiento,v_limite;
@@ -1317,6 +1315,11 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El cliente indicado no existe.';
     END IF;
     UPDATE clientes SET estado_cliente=p_estado WHERE id_cliente=p_id_cliente;
+    IF p_estado = 'Inactivo' THEN
+        UPDATE asignaciones_crm
+           SET estado = 'Finalizada', fecha_fin = NOW()
+         WHERE id_cliente = p_id_cliente AND estado = 'Activa';
+    END IF;
     COMMIT;
     SELECT p_id_cliente AS id_cliente,p_estado AS estado_cliente;
 END$$
@@ -1669,7 +1672,7 @@ BEGIN
     DECLARE v_creada INT;
     SELECT estado_cliente, nombre_completo, COALESCE(puntaje_total, 0) + p_puntos INTO v_anterior, v_nombre, v_puntos FROM clientes WHERE id_cliente =
         p_cliente FOR UPDATE;
-    IF v_anterior IN('Frio', 'Tibio', 'Calificado', 'En Negociacion') THEN
+    IF v_anterior NOT IN('Inactivo', 'Convertido') THEN
         SET v_nuevo = fn_calificacion(v_puntos, v_anterior);
         UPDATE clientes SET puntaje_total = v_puntos, estado_cliente = v_nuevo WHERE id_cliente = p_cliente;
         IF v_anterior <> 'Calificado' AND v_nuevo = 'Calificado' THEN
@@ -1759,28 +1762,40 @@ CREATE PROCEDURE sp_guardar_campana(
 )
 BEGIN
     DECLARE v_id INT DEFAULT NULL;
+    DECLARE v_estado_actual VARCHAR(20);
+    DECLARE v_codigo_lock INT DEFAULT 0;
     DECLARE v_actor_anterior TEXT DEFAULT @zimbra_actor;
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         ROLLBACK;
+        IF v_codigo_lock = 1 THEN DO RELEASE_LOCK('zimbra:campanas:codigo'); END IF;
         SET @zimbra_actor = v_actor_anterior;
         RESIGNAL;
     END;
+    SET v_codigo_lock = GET_LOCK('zimbra:campanas:codigo', 10);
+    IF v_codigo_lock IS NULL OR v_codigo_lock <> 1 THEN
+        SIGNAL SQLSTATE '45000' SET MYSQL_ERRNO = 30009, MESSAGE_TEXT = 'Otra campaña se está guardando. Intenta nuevamente.';
+    END IF;
     START TRANSACTION;
     SET @zimbra_actor = COALESCE(NULLIF(p_actor, ''), 'zimbra-api');
     IF p_id IS NULL THEN
         INSERT INTO campanas_marketing(nombre_campana, codigo_campana, descripcion, presupuesto, fecha_inicio, fecha_fin, estado)
-        VALUES(TRIM(p_nombre), p_codigo, p_descripcion, p_presupuesto, p_inicio, p_fin, p_estado);
+        VALUES(TRIM(p_nombre), p_codigo, p_descripcion, p_presupuesto, p_inicio, p_fin, 'Activa');
         SET v_id = LAST_INSERT_ID();
     ELSE
-        SELECT id_campana INTO v_id FROM campanas_marketing WHERE id_campana = p_id FOR UPDATE;
+        SELECT id_campana, estado INTO v_id, v_estado_actual FROM campanas_marketing WHERE id_campana = p_id FOR UPDATE;
         IF v_id IS NULL THEN
             SIGNAL SQLSTATE '45000' SET MYSQL_ERRNO = 30004, MESSAGE_TEXT = 'La campaña indicada no existe.';
+        END IF;
+        IF v_estado_actual <> 'Activa' THEN
+            SIGNAL SQLSTATE '45000' SET MYSQL_ERRNO = 30009, MESSAGE_TEXT = 'Reactiva la campaña antes de editarla.';
         END IF;
         UPDATE campanas_marketing SET nombre_campana = TRIM(p_nombre), codigo_campana = COALESCE(p_codigo, codigo_campana), descripcion =
             p_descripcion, presupuesto = p_presupuesto, fecha_inicio = p_inicio, fecha_fin = p_fin, estado = p_estado WHERE id_campana = p_id;
     END IF;
     COMMIT;
+    DO RELEASE_LOCK('zimbra:campanas:codigo');
+    SET v_codigo_lock = 0;
     SET @zimbra_actor = v_actor_anterior;
     SELECT v_id AS id_campana,(SELECT codigo_campana FROM campanas_marketing WHERE id_campana = v_id) AS codigo_campana;
 END$$
@@ -1794,13 +1809,19 @@ CREATE PROCEDURE sp_estado_campana(
 )
 BEGIN
     DECLARE v_id INT DEFAULT NULL;
+    DECLARE v_codigo_lock INT DEFAULT 0;
     DECLARE v_actor_anterior TEXT DEFAULT @zimbra_actor;
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         ROLLBACK;
+        IF v_codigo_lock = 1 THEN DO RELEASE_LOCK('zimbra:campanas:codigo'); END IF;
         SET @zimbra_actor = v_actor_anterior;
         RESIGNAL;
     END;
+    SET v_codigo_lock = GET_LOCK('zimbra:campanas:codigo', 10);
+    IF v_codigo_lock IS NULL OR v_codigo_lock <> 1 THEN
+        SIGNAL SQLSTATE '45000' SET MYSQL_ERRNO = 30009, MESSAGE_TEXT = 'Otra campaña se está guardando. Intenta nuevamente.';
+    END IF;
     START TRANSACTION;
     SET @zimbra_actor = COALESCE(NULLIF(p_actor, ''), 'zimbra-api');
     SELECT id_campana INTO v_id FROM campanas_marketing WHERE id_campana = p_id FOR UPDATE;
@@ -1809,6 +1830,8 @@ BEGIN
     END IF;
     UPDATE campanas_marketing SET estado = p_estado, fecha_fin = COALESCE(p_fin, fecha_fin) WHERE id_campana = p_id;
     COMMIT;
+    DO RELEASE_LOCK('zimbra:campanas:codigo');
+    SET v_codigo_lock = 0;
     SET @zimbra_actor = v_actor_anterior;
     SELECT p_id AS id_campana, p_estado AS estado;
 END$$
@@ -2147,7 +2170,7 @@ BEGIN
     DECLARE v_actualizados INT DEFAULT 0;
     DECLARE v_calificados JSON DEFAULT(JSON_ARRAY());
     DECLARE v_actor_anterior TEXT DEFAULT @zimbra_actor;
-    DECLARE cur CURSOR FOR SELECT id_cliente FROM clientes ORDER BY id_cliente;
+    DECLARE cur CURSOR FOR SELECT id_cliente FROM clientes WHERE estado_cliente NOT IN ('Inactivo', 'Convertido') ORDER BY id_cliente;
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         ROLLBACK;
@@ -2838,15 +2861,22 @@ END$$
 -- ---------------------------------------------------------------------
 CREATE TRIGGER trg_campanas_bi BEFORE INSERT ON campanas_marketing FOR EACH ROW
 BEGIN
+    DECLARE v_siguiente INT;
+    SET NEW.estado = 'Activa';
     IF NEW.codigo_campana IS NULL OR TRIM(NEW.codigo_campana) = '' THEN
-        SET NEW.codigo_campana = CONCAT('CAM-', UPPER(REPLACE(UUID(), '-', '')));
+        SELECT COALESCE(MAX(CAST(SUBSTRING(codigo_campana, 5) AS UNSIGNED)), 0) + 1 INTO v_siguiente
+        FROM campanas_marketing WHERE codigo_campana REGEXP '^CAM-[0-9]{6}$';
+        IF v_siguiente > 999999 THEN
+            SIGNAL SQLSTATE '45000' SET MYSQL_ERRNO = 30009, MESSAGE_TEXT = 'Se agotó el consecutivo de códigos de campaña.';
+        END IF;
+        SET NEW.codigo_campana = CONCAT('CAM-', LPAD(v_siguiente, 6, '0'));
     END IF;
     SET NEW.codigo_campana = UPPER(TRIM(NEW.codigo_campana));
     IF NEW.codigo_campana IS NULL OR NEW.codigo_campana NOT REGEXP '^[A-Z0-9_-]{1,50}$' THEN
         SIGNAL SQLSTATE '45000' SET MYSQL_ERRNO = 30001, MESSAGE_TEXT = 'El código de campaña no es válido.';
     END IF;
     IF NEW.nombre_campana IS NULL OR TRIM(NEW.nombre_campana) = '' OR NEW.fecha_inicio IS NULL OR NEW.fecha_fin IS
-         NULL OR NEW.fecha_fin < NEW.fecha_inicio OR NEW.presupuesto < 0 OR NEW.estado IS NULL OR NEW.estado NOT IN
+         NULL OR NEW.fecha_fin < NEW.fecha_inicio OR NEW.presupuesto IS NULL OR NEW.presupuesto < 0 OR NEW.estado IS NULL OR NEW.estado NOT IN
         ('Activa', 'Inactiva') THEN
         SIGNAL SQLSTATE '45000' SET MYSQL_ERRNO = 30001, MESSAGE_TEXT = 'Los datos y fechas de la campaña no son válidos.';
     END IF;
@@ -2863,7 +2893,7 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MYSQL_ERRNO = 30001, MESSAGE_TEXT = 'El código de campaña no es válido.';
     END IF;
     IF NEW.nombre_campana IS NULL OR TRIM(NEW.nombre_campana) = '' OR NEW.fecha_inicio IS NULL OR NEW.fecha_fin IS
-         NULL OR NEW.fecha_fin < NEW.fecha_inicio OR NEW.presupuesto < 0 OR NEW.estado IS NULL OR NEW.estado NOT IN
+         NULL OR NEW.fecha_fin < NEW.fecha_inicio OR NEW.presupuesto IS NULL OR NEW.presupuesto < 0 OR NEW.estado IS NULL OR NEW.estado NOT IN
         ('Activa', 'Inactiva') THEN
         SIGNAL SQLSTATE '45000' SET MYSQL_ERRNO = 30001, MESSAGE_TEXT = 'Los datos y fechas de la campaña no son válidos.';
     END IF;
@@ -2911,7 +2941,7 @@ BEGIN
     IF v_puntos IS NULL THEN
         SIGNAL SQLSTATE '45000' SET MYSQL_ERRNO = 30001, MESSAGE_TEXT = 'La acción no existe o está inactiva.';
     END IF;
-    SET NEW.puntaje_otorgado = IF(NEW.id_cliente IS NULL OR v_estado IN('Frio', 'Tibio', 'Calificado', 'En Negociacion'), v_puntos, 0);
+    SET NEW.puntaje_otorgado = IF(NEW.id_cliente IS NULL OR v_estado NOT IN('Inactivo', 'Convertido'), v_puntos, 0);
     SET NEW.es_retorno = COALESCE(v_estado = 'Calificado', FALSE);
     IF NEW.id_campana IS NOT NULL THEN
         SELECT id_campana INTO v_campana FROM campanas_marketing WHERE id_campana = NEW.id_campana AND estado = 'Activa' FOR SHARE;
@@ -2953,7 +2983,7 @@ BEGIN
             SIGNAL SQLSTATE '45000' SET MYSQL_ERRNO = 30009, MESSAGE_TEXT = 'No se puede asociar actividad a un cliente inactivo.';
         END IF;
         SET NEW.es_retorno =(v_estado = 'Calificado');
-        IF v_estado NOT IN('Frio', 'Tibio', 'Calificado', 'En Negociacion') THEN
+        IF v_estado IN('Inactivo', 'Convertido') THEN
             SET NEW.puntaje_otorgado = 0;
         END IF;
     ELSEIF NOT(NEW.id_cliente <=> OLD.id_cliente) OR NOT(NEW.clave_rastreo <=> OLD.clave_rastreo) OR NOT(
@@ -3277,6 +3307,7 @@ WHERE d.estado_prueba = 'Activa'
 -- 8. Índices
 -- =====================================================================
 
+
 -- ÍNDICE 1: HU-18 – Búsqueda de plantillas por evento y estado
 CREATE INDEX idx_plantillas_evento_estado ON plantillas_correo(evento,estado);
 
@@ -3320,7 +3351,97 @@ CREATE INDEX idx_actividad_campana_fecha ON actividad_web (id_campana, fecha_act
 CREATE INDEX idx_actividad_visitante ON actividad_web (clave_rastreo, id_cliente, fecha_actividad, id_actividad);
 
 -- =====================================================================
--- 9. Transacciones
+-- 9. Simulación de concurrencia y bloqueos
+-- =====================================================================
+
+/*
+-- Bloquea el prospecto hasta confirmar o deshacer.
+START TRANSACTION;
+SELECT id_cliente FROM clientes WHERE id_cliente = 5 FOR UPDATE;
+-- Sesión B: espera el bloqueo de la fila hasta que A termine.
+START TRANSACTION;
+SELECT id_cliente FROM clientes WHERE id_cliente = 5 FOR UPDATE;
+-- Sesión A
+COMMIT;
+-- Sesión B
+ROLLBACK;
+
+-- Cada sesión bloquea primero un cliente distinto.
+-- Sesión A: START TRANSACTION; UPDATE clientes SET telefono='3000000001' WHERE id_cliente=1;
+-- Sesión B: START TRANSACTION; UPDATE clientes SET telefono='3000000002' WHERE id_cliente=2;
+-- A: UPDATE clientes SET telefono='3000000003' WHERE id_cliente=2;
+-- B: UPDATE clientes SET telefono='3000000004' WHERE id_cliente=1; -- error 1213 esperado
+-- A: ROLLBACK;
+
+-- Dos cambios incrementales al mismo puntaje: B espera y ambos incrementos permanecen.
+-- Sesión A: START TRANSACTION; SELECT id_cliente FROM clientes WHERE id_cliente=1 FOR UPDATE;
+-- Sesión B: START TRANSACTION; UPDATE clientes SET puntaje_total=puntaje_total+10 WHERE id_cliente=1;
+-- Sesión A: UPDATE clientes SET puntaje_total=puntaje_total+10 WHERE id_cliente=1; COMMIT;
+-- Sesión B: COMMIT;
+
+-- Dos vendedores toman filas diferentes sin esperar.
+-- START TRANSACTION;
+-- SELECT c.id_cliente FROM clientes c
+-- WHERE c.estado_cliente='Calificado'
+--   AND NOT EXISTS (SELECT 1 FROM asignaciones_crm a WHERE a.id_cliente=c.id_cliente AND a.estado='Activa')
+-- ORDER BY c.id_cliente LIMIT 1 FOR UPDATE SKIP LOCKED;
+-- COMMIT;
+
+-- Monitoreo de bloqueos 
+-- SELECT * FROM performance_schema.data_locks;
+-- SELECT * FROM sys.innodb_lock_waits;
+-- SHOW ENGINE INNODB STATUS;
+*/
+
+-- =====================================================================
+-- 9. Roles y permisos 
+-- =====================================================================
+CREATE ROLE IF NOT EXISTS 'zimbra_report_reader', 'zimbra_app_operator';
+CREATE USER IF NOT EXISTS 'zimbra_app'@'localhost' IDENTIFIED BY 'CambiarClaveApp#2026';
+CREATE USER IF NOT EXISTS 'report_user'@'localhost' IDENTIFIED BY 'CambiarClaveReportes#2026';
+ALTER USER 'zimbra_app'@'localhost' IDENTIFIED BY 'CambiarClaveApp#2026';
+ALTER USER 'report_user'@'localhost' IDENTIFIED BY 'CambiarClaveReportes#2026';
+
+GRANT SELECT ON zimbra_bd.vw_reporte_ventas TO 'zimbra_report_reader';
+GRANT SELECT ON zimbra_bd.vw_reporte_rendimiento_vendedores TO 'zimbra_report_reader';
+GRANT SELECT ON zimbra_bd.vw_reporte_interacciones TO 'zimbra_report_reader';
+GRANT SELECT ON zimbra_bd.vw_reporte_asignaciones TO 'zimbra_report_reader';
+GRANT SELECT ON zimbra_bd.vw_reporte_automatizacion TO 'zimbra_report_reader';
+GRANT SELECT ON zimbra_bd.vw_historial_cliente TO 'zimbra_report_reader';
+GRANT SELECT ON zimbra_bd.vw_calificados TO 'zimbra_report_reader';
+GRANT SELECT ON zimbra_bd.vw_pruebas_por_vencer TO 'zimbra_report_reader';
+
+GRANT SELECT, EXECUTE ON zimbra_bd.* TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.empresas TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.clientes TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.vendedores TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.usuarios TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.recuperacion_claves TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.productos TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.campanas_marketing TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.acciones_marketing TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.actividad_web TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.visitantes_web TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.ventas TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.detalle_ventas TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.descargas_prueba TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.asignaciones_crm TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.interacciones TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.alertas TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.plantillas_correo TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.correos_enviados TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.salesforce_sincronizaciones TO 'zimbra_app_operator';
+GRANT INSERT ON zimbra_bd.auditoria_cambios TO 'zimbra_app_operator';
+GRANT 'zimbra_app_operator' TO 'zimbra_app'@'localhost';
+GRANT 'zimbra_report_reader' TO 'report_user'@'localhost';
+SET DEFAULT ROLE ALL TO 'zimbra_app'@'localhost', 'report_user'@'localhost';
+
+-- Validación de permisos
+SHOW GRANTS FOR 'zimbra_app'@'localhost' USING 'zimbra_app_operator';
+SHOW GRANTS FOR 'report_user'@'localhost' USING 'zimbra_report_reader';
+
+-- =====================================================================
+-- 10. Transacciones
 -- =====================================================================
 
 -- TRANSACCIÓN 1: HU-01 / HU-02 / HU-03 – Consultar usuarios y recuperación de acceso sin mostrar contraseñas
@@ -3477,7 +3598,7 @@ COMMIT;
 */
 
 -- =====================================================================
--- 10. Consultas
+-- 11. Consultas
 -- =====================================================================
 
 -- CONSULTA 1: HU-01 a HU-33 – Contar los registros de las tablas principales

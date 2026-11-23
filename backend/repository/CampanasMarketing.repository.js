@@ -29,7 +29,25 @@ export async function cambiarEstadoCampanaMarketing({ id_campana, estado, fecha_
 async function call(name, parameters = []) {
   if (!['sp_estado_campana', 'sp_guardar_campana', 'sp_listar_campanas'].includes(name)) throw new Error('Procedimiento no permitido.');
   const connection = await sequelize.connectionManager.getConnection({ type: 'WRITE' });
+  let codeLock = false;
   try {
+    if (name === 'sp_guardar_campana' || name === 'sp_estado_campana') {
+      const [lock] = await connectionQuery(connection, "SELECT GET_LOCK('zimbra:campanas:codigo', 10) AS acquired");
+      if (Number(lock.acquired) !== 1) throw httpError(409, 'Otra campaña se está guardando. Intenta nuevamente.');
+      codeLock = true;
+      if (name === 'sp_guardar_campana' && parameters[0] != null) {
+        const [current] = await new Promise((resolve, reject) => connection.query('SELECT estado FROM campanas_marketing WHERE id_campana = ?', [parameters[0]], (error, rows) => error ? reject(error) : resolve(rows)));
+        if (!current) throw httpError(404, 'La campaña indicada no existe.');
+        if (current.estado !== 'Activa') throw httpError(409, 'Reactiva la campaña antes de editarla.');
+      }
+      if (name === 'sp_guardar_campana' && parameters[0] == null && !String(parameters[2] ?? '').trim()) {
+        const [row] = await connectionQuery(connection, "SELECT COALESCE(MAX(CAST(SUBSTRING(codigo_campana, 5) AS UNSIGNED)), 0) + 1 AS siguiente FROM campanas_marketing WHERE codigo_campana REGEXP '^CAM-[0-9]{6}$'");
+        const next = Number(row.siguiente);
+        if (!Number.isSafeInteger(next) || next < 1 || next > 999999) throw httpError(409, 'Se agotó el consecutivo de códigos de campaña.');
+        parameters = [...parameters];
+        parameters[2] = `CAM-${String(next).padStart(6, '0')}`;
+      }
+    }
     const results = await new Promise((resolve, reject) => {
       connection.query(
         `CALL ${name}(${parameters.map(() => '?').join(',')})`,
@@ -51,8 +69,16 @@ async function call(name, parameters = []) {
     }
     throw error;
   } finally {
-    await sequelize.connectionManager.releaseConnection(connection);
+    try {
+      if (codeLock) await connectionQuery(connection, "DO RELEASE_LOCK('zimbra:campanas:codigo')");
+    } finally {
+      await sequelize.connectionManager.releaseConnection(connection);
+    }
   }
+}
+
+function connectionQuery(connection, sql) {
+  return new Promise((resolve, reject) => connection.query(sql, (error, rows) => error ? reject(error) : resolve(rows)));
 }
 
 /** Prepara la página solicitada y el total de resultados. */

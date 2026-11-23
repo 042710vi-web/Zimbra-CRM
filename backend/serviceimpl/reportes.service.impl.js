@@ -1,3 +1,4 @@
+import { getIndicatorsReport } from '../repository/indicadores.repository.js';
 /**
  * Valida los datos y coordina las operaciones necesarias para gestionar reportes.
  */
@@ -96,4 +97,13 @@ export async function automationReport(query = {}, user) {
   ensureAdmin(user);
   const period = defaultPeriod(query);
   return { filtros: period, ...(await automationRepository(period)) };
+}
+
+
+export async function indicatorsReport(query = {}, user) {
+  ensureAdmin(user);
+  const period = defaultPeriod(query);
+  const page = query.page === undefined ? 1 : positiveInt(query.page, 'page');
+  const limit = query.limit === undefined ? 20 : Math.min(100, positiveInt(query.limit, 'limit'));
+  return { filtros: period, ...(await getIndicatorsReport({ ...period, page, limit })) };
 }

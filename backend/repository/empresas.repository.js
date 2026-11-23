@@ -2,9 +2,8 @@
  * Consulta y guarda en la base de datos la información de empresas.
  */
 import { Op } from 'sequelize';
-import { sequelize } from '../config/database.js';
 import { Empresa } from '../entity/Empresas.entity.js';
-import { registerChanges } from './auditoria.repository.js';
+import { callProcedure } from './storedProcedures.repository.js';
 
 export const findCompanies = (q) => Empresa.findAll({
   where: q ? { nombre_empresa: { [Op.like]: `%${q}%` } } : undefined,
@@ -14,6 +13,13 @@ export const findCompanies = (q) => Empresa.findAll({
 
 /** Realiza la consulta o el cambio de información solicitado. */
 export async function createCompany(data) {
-  const company = await Empresa.create(data);
-  return company.id_empresa;
+  const [rows] = await callProcedure('sp_registrar_empresa', [
+    data.nombre_empresa, data.sector_industria || null, data.sitio_web || null,
+  ]);
+  return Number(rows[0]?.id_empresa);
+}
+
+export async function getCompanyDetails(id_empresa) {
+  const [summary = [], clients = []] = await callProcedure('sp_detalle_empresa', [id_empresa]);
+  return summary[0] ? { ...summary[0], clientes: clients } : null;
 }
