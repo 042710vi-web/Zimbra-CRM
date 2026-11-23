@@ -1,0 +1,11 @@
+{
+    "schema_version": 2,
+    "commit": "a68a27fe0cce5ced11a97c50a39f7d54bc3f5042",
+    "indexed_at": "2026-11-23T19:48:37Z",
+    "project": "Proyecto-Zimbra",
+    "nodes": 1244,
+    "edges": 3537,
+    "original_size": 5767168,
+    "compressed_size": 1000240,
+    "compression_level": 9
+}

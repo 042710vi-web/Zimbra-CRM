@@ -11,6 +11,8 @@ Aplicación del CRM conectada a MySQL, base `zimbra_bd`. Esta guía explica las 
 
 Las rutas protegidas usan `Authorization: Bearer <token>`. La sesión existente entrega `req.user.id`, `role`, `vendorId` y `email`. Sin sesión: `401`; sin permisos: `403`; datos inválidos: `400`; duplicados: `409`; errores internos: `500` mediante el middleware del equipo.
 
+El sitio de demostración usa `GET /api/public/catalog`, `POST /api/public/leads`, `POST /api/public/descargas` y `POST /api/public/activities` sin sesión del CRM. El catálogo devuelve productos activos, campañas activas (sin datos internos de presupuesto) y acciones del recorrido. La ruta de actividad para la simulación limita los eventos por IP. El rastreo integrado productivo continúa en `POST /api/tracking/eventos`, que requiere `ZIMBRA_TRACKING_KEY`; esa clave no debe exponerse en el código del navegador.
+
 ## Arquitectura
 
 Cada carpeta tiene una tarea:

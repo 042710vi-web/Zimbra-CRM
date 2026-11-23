@@ -19,16 +19,17 @@ import { ProductosPage, CampanasPage, AccionesPage } from '../pages/catalogos/Ca
 import ActividadPage from '../pages/actividad/ActividadPage.jsx';
 import CalificacionPage from '../pages/calificacion/CalificacionPage.jsx';
 import AlertasPage from '../pages/alertas/AlertasPage.jsx';
+import PublicSitePage from '../pages/public/PublicSitePage.jsx';
 
 function ProtectedLayout() {
   const { session } = useAuth();
-  if (!session?.token || !session?.user) return <Navigate to="/login" replace />;
+  if (!session?.token || !session?.user) return <Navigate to="/equipo" replace />;
   return <AppLayout />;
 }
 
 function LoginRoute() {
   const { session } = useAuth();
-  return session?.token && session?.user ? <Navigate to="/" replace /> : <LoginPage />;
+  return session?.token && session?.user ? <Navigate to="/crm" replace /> : <LoginPage />;
 }
 
 function CrmRoutes() {
@@ -37,9 +38,12 @@ function CrmRoutes() {
   return <Routes>
     <Route path="/recuperar" element={<RecuperarPasswordPage />} />
     <Route path="/restablecer" element={<RestablecerPasswordPage />} />
-    <Route path="/login" element={<LoginRoute />} />
+    <Route path="/login" element={<Navigate to="/" replace />} />
+    <Route path="/equipo" element={<LoginRoute />} />
+    <Route path="/" element={<PublicSitePage />} />
+    <Route path="/solicitar-prueba" element={<PublicSitePage />} />
     <Route element={<ProtectedLayout />}>
-      <Route path="/" element={<DashboardPage />} />
+      <Route path="/crm" element={<DashboardPage />} />
       <Route path="/clientes" element={<ClientesPage onCreated={setSuggestedClientId} />} />
       <Route path="/empresas" element={<EmpresasPage />} />
       <Route path="/productos" element={<ProductosPage />} />
@@ -58,7 +62,7 @@ function CrmRoutes() {
       {session?.user?.role === 'Administrador' && <Route path="/plantillas" element={<AutomatizacionPage />} />}
       {session?.user?.role === 'Administrador' && <Route path="/vendedores" element={<VendedoresPage />} />}
     </Route>
-    <Route path="*" element={<Navigate to="/" replace />} />
+    <Route path="*" element={<Navigate to={session?.token ? '/crm' : '/'} replace />} />
   </Routes>;
 }
 

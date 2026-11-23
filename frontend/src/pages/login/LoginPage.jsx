@@ -20,7 +20,7 @@ export default function LoginPage() {
 
     try {
       await login({ email, password });
-      navigate('/', { replace: true });
+      navigate('/crm', { replace: true });
     } catch (cause) {
       setError(cause.message);
     } finally {
@@ -29,7 +29,7 @@ export default function LoginPage() {
   }
 
   if (session?.token) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/crm" replace />;
   }
 
   return (
@@ -58,6 +58,7 @@ export default function LoginPage() {
           <span className="eyebrow">BIENVENIDO DE NUEVO</span>
           <h2>Inicia sesión</h2>
           <p className="muted">Ingresa tus credenciales para continuar.</p>
+          <p className="muted">¿Buscas una prueba de producto? <Link to="/solicitar-prueba">Visita el sitio público</Link>.</p>
 
           <label>
             Correo electrónico

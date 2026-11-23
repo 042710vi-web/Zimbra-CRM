@@ -94,7 +94,7 @@ export default function RecuperarPasswordPage() {
           </button>
 
           <p className="auth-back">
-            <Link to="/login">← Volver a iniciar sesión</Link>
+            <Link to="/equipo">← Volver a iniciar sesión</Link>
           </p>
         </form>
       </section>

@@ -14,6 +14,8 @@
 
 El inicio de sesión usa `POST /api/auth/login`. Después del login, el frontend consume `GET /api/products` y muestra formularios para `POST /api/clients`, `POST /api/trials`, `POST /api/assignments` y `POST /api/sales`.
 
+La portada `/` (también disponible en `/solicitar-prueba`) es el recorrido público y no requiere iniciar sesión. Permite navegar por el catálogo, registrar visitas anónimas, enviar los datos del prospecto a `POST /api/public/leads` y crear la prueba con `POST /api/public/descargas`. Los eventos de la simulación usan `POST /api/public/activities`; la integración productiva de rastreo conserva `POST /api/tracking/eventos` con la clave configurada en el backend. El equipo entra por `/login` y, tras autenticarse, llega al panel en `/crm`.
+
 El token se conserva en `sessionStorage` y se envía como `Authorization: Bearer <token>`. La pantalla de asignaciones solo aparece habilitada para el rol `Administrador`.
 
 Para iniciar sesión, usa una cuenta y contraseña válidas de la tabla `usuarios`. El archivo SQL compartido contiene hashes de contraseña, no contraseñas en texto claro.

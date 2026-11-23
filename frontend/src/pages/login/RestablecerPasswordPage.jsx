@@ -77,7 +77,7 @@ export default function RestablecerPasswordPage() {
               <DismissiblePanel as="div" noticeKey="password-reset-success" className="notice success" role="status">
                 Tu contraseña se actualizó correctamente.
               </DismissiblePanel>
-              <Link className="button primary full auth-button-link" to="/login">
+              <Link className="button primary full auth-button-link" to="/equipo">
                 Ir a iniciar sesión <span>→</span>
               </Link>
             </>
@@ -124,7 +124,7 @@ export default function RestablecerPasswordPage() {
           )}
 
           <p className="auth-back">
-            <Link to="/login">← Volver a iniciar sesión</Link>
+            <Link to="/equipo">← Volver a iniciar sesión</Link>
           </p>
         </form>
       </section>
