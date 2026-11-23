@@ -14,6 +14,11 @@ import InteraccionesPage from '../pages/interacciones/InteraccionesPage.jsx';
 import ReportesPage from '../pages/reportes/ReportesPage.jsx';
 import AutomatizacionPage from '../pages/automatizacion/AutomatizacionPage.jsx';
 import VendedoresPage from '../pages/vendedores/VendedoresPage.jsx';
+import { EmpresasPage, SeguimientoPage } from '../pages/gestion/GestionPages.jsx';
+import { ProductosPage, CampanasPage, AccionesPage } from '../pages/catalogos/CatalogosPage.jsx';
+import ActividadPage from '../pages/actividad/ActividadPage.jsx';
+import CalificacionPage from '../pages/calificacion/CalificacionPage.jsx';
+import AlertasPage from '../pages/alertas/AlertasPage.jsx';
 
 function ProtectedLayout() {
   const { session } = useAuth();
@@ -36,6 +41,15 @@ function CrmRoutes() {
     <Route element={<ProtectedLayout />}>
       <Route path="/" element={<DashboardPage />} />
       <Route path="/clientes" element={<ClientesPage onCreated={setSuggestedClientId} />} />
+      <Route path="/empresas" element={<EmpresasPage />} />
+      <Route path="/productos" element={<ProductosPage />} />
+      <Route path="/actividad" element={<ActividadPage />} />
+      <Route path="/alertas" element={<AlertasPage />} />
+      {session?.user?.role === 'Administrador' && <Route path="/campanas" element={<CampanasPage />} />}
+      {session?.user?.role === 'Administrador' && <Route path="/acciones" element={<AccionesPage />} />}
+      {session?.user?.role === 'Administrador' && <Route path="/calificacion" element={<CalificacionPage />} />}
+      {session?.user?.role === 'Administrador' && <Route path="/auditoria" element={<SeguimientoPage key="audit" mode="audit" />} />}
+      {session?.user?.role === 'Administrador' && <Route path="/salesforce" element={<SeguimientoPage key="sync" mode="sync" />} />}
       <Route path="/pruebas" element={<DescargasPage suggestedClientId={suggestedClientId} />} />
       <Route path="/asignaciones" element={<AsignacionesPage suggestedClientId={suggestedClientId} />} />
       <Route path="/ventas" element={<VentasPage suggestedClientId={suggestedClientId} />} />

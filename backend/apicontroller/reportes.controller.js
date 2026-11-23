@@ -60,8 +60,14 @@ export async function automation(req, res, next) {
   try { respond(req, res, await reports.automationReport(req.query, req.user), 'reporte-automatizacion'); } catch (error) { next(error); }
 }
 export async function exportCsv(req, res, next) {
-  const handlers = { sales: reports.salesReport, clients: reports.clientsReport, campaigns: reports.campaignsReport, interactions: reports.interactionsReport, assignments: reports.assignmentsReport, automation: reports.automationReport };
+  const handlers = { indicators: reports.indicatorsReport, sales: reports.salesReport, clients: reports.clientsReport, campaigns: reports.campaignsReport, interactions: reports.interactionsReport, assignments: reports.assignmentsReport, automation: reports.automationReport };
   const type = String(req.query.tipo || 'sales');
-  if (!handlers[type]) return res.status(400).json({ message: 'tipo debe ser sales, clients, campaigns, interactions, assignments o automation.' });
+  if (!handlers[type]) return res.status(400).json({ message: 'tipo debe ser sales, clients, campaigns, interactions, assignments, automation o indicators.' });
   try { respond({ ...req, query: { ...req.query, format: 'csv' } }, res, await handlers[type](req.query, req.user), `reporte-${type}`); } catch (error) { next(error); }
+}
+
+
+export async function indicators(req, res, next) {
+  try { respond(req, res, await reports.indicatorsReport(req.query, req.user), 'reporte-indicadores'); }
+  catch (error) { next(error); }
 }

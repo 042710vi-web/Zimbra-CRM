@@ -1,7 +1,7 @@
-import { api } from '../api/client.js';
+import { readModule } from './modulos.service.js';
 
 // HU-08: consultar el catálogo de productos.
 // Endpoint: GET /api/products.
-export function listProducts(token) {
-  return api('/products', { token });
+export function listProducts(token, params = {}) {
+  return readModule(token, '/products', params);
 }

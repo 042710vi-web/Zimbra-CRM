@@ -1,3 +1,4 @@
+import { syncQualifiedClients } from './salesforce.service.impl.js';
 /** HU-15 y HU-16 - Actividad web.
  * Revisa los datos y coordina las operaciones del módulo.
  */
@@ -25,7 +26,9 @@ function activityData(data = {}) {
 
 // HU-15: Registra una actividad válida y devuelve el puntaje aplicado.
 export async function createActivity(data = {}, user = {}) {
-  return createWebActivity({ ...activityData(data), usuario: user.email });
+  const result = await createWebActivity({ ...activityData(data), usuario: user.email });
+  await syncQualifiedClients([result.id_cliente]);
+  return result;
 }
 
 // HU-15: Envía varios eventos; cada dato inválido se rechaza sin perder los eventos válidos.
@@ -34,7 +37,9 @@ export async function createActivitiesBatch(data = {}, user = {}) {
     throw httpError(400, 'actividades debe contener al menos un registro.');
   }
   if (data.actividades.length > 50) throw httpError(400, 'La carga no puede superar 50 actividades por solicitud.');
-  return createWebActivitiesBatch({ actividades: data.actividades, usuario: user.email });
+  const result = await createWebActivitiesBatch({ actividades: data.actividades, usuario: user.email });
+  await syncQualifiedClients(result.aceptadas.map((item) => item.id_cliente));
+  return result;
 }
 
 // HU-15: Consulta el historial respetando el vendedor responsable.

@@ -28,8 +28,8 @@ function validarDatosCampana(data = {}) {
   const nombre_campana = requireText(data.nombre_campana, 'El nombre de la campaña', 150);
   const codigo_campana = optionalText(data.codigo_campana ?? data.codigo, 'El código de campaña', 50)?.toUpperCase() ?? null;
   if (codigo_campana && !/^[A-Z0-9_-]+$/.test(codigo_campana)) throw httpError(400, 'El código de campaña solo admite letras, números, guion y guion bajo.');
-  if (data.presupuesto === '' || typeof data.presupuesto === 'boolean') throw httpError(400, 'El presupuesto debe ser numérico.');
-  const presupuesto = data.presupuesto === undefined || data.presupuesto === null ? null : Number(data.presupuesto);
+  if (!['number', 'string'].includes(typeof data.presupuesto) || String(data.presupuesto).trim() === '') throw httpError(400, 'El presupuesto debe ser numérico.');
+  const presupuesto = Number(data.presupuesto);
   if (presupuesto !== null && (!Number.isFinite(presupuesto) || presupuesto < 0)) throw httpError(400, 'El presupuesto debe ser un número igual o mayor que cero.');
   if (presupuesto !== null && presupuesto > 9999999999.99) throw httpError(400, 'El presupuesto supera el máximo permitido.');
   const fecha_inicio = validarFecha(data.fecha_inicio, 'fecha_inicio');
@@ -58,7 +58,7 @@ export async function listarCampanasMarketing(query = {}) {
 
 // HU-12: registra una campaña activa y verifica sus fechas y presupuesto.
 export async function crearCampanaMarketing(data = {}, user = {}) {
-  const campana = validarDatosCampana(data);
+  const campana = validarDatosCampana({ ...data, estado: 'Activa' });
   const id_campana = await guardarCampanaMarketing(campana, user.email);
   return { id_campana, message: 'Campaña registrada correctamente.' };
 }

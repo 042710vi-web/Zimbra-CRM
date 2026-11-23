@@ -1,3 +1,4 @@
+import DismissiblePanel from '../../components/common/DismissiblePanel.jsx';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Brand from '../../components/common/Brand.jsx';
@@ -70,7 +71,7 @@ export default function RecuperarPasswordPage() {
           )}
 
           {result && (
-            <div className="notice success" role="status">
+            <DismissiblePanel as="div" noticeKey={result} onClose={() => setResult(null)} className="notice success" role="status">
               {result.message}
               {result.resetUrl && (
                 <span className="dev-reset-link">
@@ -85,7 +86,7 @@ export default function RecuperarPasswordPage() {
                   </Link>
                 </span>
               )}
-            </div>
+            </DismissiblePanel>
           )}
 
           <button className="button primary full" disabled={busy}>

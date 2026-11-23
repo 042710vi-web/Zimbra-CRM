@@ -1,3 +1,5 @@
+import SearchInput from '../../components/common/SearchInput.jsx';
+import PagedTable, { TablePagination } from '../../components/common/PagedTable.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useApiAction } from '../../hooks/useApiAction.js';
@@ -16,26 +18,34 @@ export default function VentasPage({ suggestedClientId }) {
   const { busy, notice, run } = useApiAction();
   const vendorId = session.user.vendorId;
   const isAdmin = session.user.role === 'Administrador';
-  const [form, setForm] = useState({ id_cliente: '', id_vendedor: '', metodo_pago: 'Transferencia', items: [{ id_producto: '', cantidad: 1 }] });
+  const [form, setForm] = useState({ id_cliente: '', id_vendedor: '', metodo_pago: '', items: [{ id_producto: '', cantidad: 1 }] });
   const [sales, setSales] = useState([]);
+  const [tablePage, setTablePage] = useState(1);
+  const [tableSize, setTableSize] = useState(10);
+  const [tableMeta, setTableMeta] = useState({ total: 0, pages: 1 });
   const [salesError, setSalesError] = useState('');
   const [salesBusy, setSalesBusy] = useState(true);
+  const [clientSearch, setClientSearch] = useState('');
   const [filters, setFilters] = useState({ id_cliente: '', estado_venta: '' });
+  const [appliedFilters, setAppliedFilters] = useState({});
 
-  async function refreshSales() {
+  async function refreshSales(nextPage = tablePage) {
     setSalesBusy(true);
     setSalesError('');
     try {
-      const result = await listSales(session.token, { page: 1, limit: 50, ...filters });
+      const result = await listSales(session.token, { page: nextPage, limit: tableSize, ...appliedFilters });
       setSales(result.data);
+      setFilters((current) => ({ ...current, estado_venta: '' }));
+      setTablePage(nextPage);
+      setTableMeta(result.pagination || result);
     } catch (error) {
       setSalesError(error.message);
     } finally { setSalesBusy(false); }
   }
 
-  useEffect(() => { refreshSales(); }, [session.token]);
+  useEffect(() => { refreshSales(1); }, [session.token, tableSize, appliedFilters]);
 
-  function searchSales(event) { event.preventDefault(); refreshSales(); }
+  function searchSales(event) { event.preventDefault(); setAppliedFilters({ ...filters }); setClientSearch(''); }
 
   useEffect(() => {
     if (suggestedClientId && !form.id_cliente) setForm((current) => ({ ...current, id_cliente: String(suggestedClientId) }));
@@ -51,7 +61,7 @@ export default function VentasPage({ suggestedClientId }) {
     };
     const result = await run(() => createSale(session.token, data));
     if (result) {
-      setForm((current) => ({ ...current, id_cliente: '', items: [{ id_producto: '', cantidad: 1 }] }));
+      setForm((current) => ({ ...current, id_cliente: '', metodo_pago: '', items: [{ id_producto: '', cantidad: 1 }] }));
       await refreshSales();
     }
   }
@@ -74,27 +84,27 @@ export default function VentasPage({ suggestedClientId }) {
     if (result) await refreshSales();
   }
 
-  return <><div className="page-heading"><div><span className="eyebrow">CIERRE COMERCIAL</span><h1>Registrar venta</h1><p>Registra la venta y congela el precio actual de cada producto.</p></div></div><Notice notice={notice} />
+  return <div className="sales-page"><div className="page-heading"><div><span className="eyebrow">CIERRE COMERCIAL</span><h1>Registrar venta</h1><p>Registra la venta y congela el precio actual de cada producto.</p></div></div><Notice notice={notice} />
     <form className="form-card" onSubmit={submit}>
       <div className="form-section"><h3>Datos de la venta</h3><div className="form-grid">
         <Field label="ID del cliente *" type="number" min="1" required value={form.id_cliente} onChange={(event) => setForm({ ...form, id_cliente: event.target.value })} placeholder="Ej. 24" />
         {isAdmin ? <Field label="ID del vendedor *" type="number" min="1" required value={form.id_vendedor} onChange={(event) => setForm({ ...form, id_vendedor: event.target.value })} placeholder="Ej. 3" /> : <div className="field"><span>Vendedor asignado</span><div className="readonly-field">{vendorId ? `Vendedor #${vendorId}` : 'Tu usuario no tiene vendedor asociado'}</div></div>}
-        <Field label="Método de pago"><select value={form.metodo_pago} onChange={(event) => setForm({ ...form, metodo_pago: event.target.value })}><option>Transferencia</option><option>PSE</option><option>Tarjeta</option><option>Consignación</option><option>Otro</option></select></Field>
+        <Field label="Método de pago"><select required value={form.metodo_pago} onChange={(event) => setForm({ ...form, metodo_pago: event.target.value })}><option value="">Selecciona un método</option><option>Transferencia</option><option>PSE</option><option>Tarjeta</option><option>Consignación</option><option>Otro</option></select></Field>
       </div></div>
-      <div className="form-section"><h3>Productos</h3>{form.items.map((item, index) => <div className="form-grid" key={index}>
+      <div className="form-section"><h3>Productos</h3>{form.items.map((item, index) => <div className="form-grid sale-product-row" key={index}>
         <Field label={`Producto comercial ${index + 1} *`}><select required value={item.id_producto} onChange={(event) => setForm({ ...form, items: form.items.map((line, i) => i === index ? { ...line, id_producto: event.target.value } : line) })}><option value="">Selecciona un producto</option>{commercialProducts.map((product) => <option key={product.id_producto} value={product.id_producto}>{product.nombre_producto} · {formatCurrency(product.precio)}</option>)}</select></Field>
         <Field label="Cantidad *" type="number" min="1" required value={item.cantidad} onChange={(event) => setForm({ ...form, items: form.items.map((line, i) => i === index ? { ...line, cantidad: event.target.value } : line) })} />
-        {form.items.length > 1 && <button type="button" className="button" onClick={() => setForm({ ...form, items: form.items.filter((_, i) => i !== index) })}>Quitar</button>}
-      </div>)}<button type="button" className="button" onClick={() => setForm({ ...form, items: [...form.items, { id_producto: '', cantidad: 1 }] })}>Añadir producto</button></div>
+        <div className="sale-product-actions">{form.items.length > 1 && <button type="button" className="button" onClick={() => setForm({ ...form, items: form.items.filter((_, i) => i !== index) })}>Quitar</button>}{index === form.items.length - 1 && <button type="button" className="button" onClick={() => setForm({ ...form, items: [...form.items, { id_producto: '', cantidad: 1 }] })}>Añadir producto</button>}</div>
+      </div>)}</div>
       <div className="form-actions"><span className="muted">La venta, su detalle y auditoría se guardan en una transacción.</span><button className="button primary" disabled={busy || !commercialProducts.length || (!isAdmin && !vendorId)}>{busy ? 'Registrando…' : 'Registrar venta'} <span>→</span></button></div>
     </form>
-    <div className="section-title clients-list-heading"><div><h2>Ventas registradas</h2><p>Historial comercial con su detalle de productos.</p></div><span className="count-chip">{sales.length} registros</span></div>
-    <form className="form-card report-filters" onSubmit={searchSales}><Field label="ID cliente" type="number" min="1" value={filters.id_cliente} onChange={(e) => setFilters({ ...filters, id_cliente: e.target.value })} /><Field label="Estado"><select value={filters.estado_venta} onChange={(e) => setFilters({ ...filters, estado_venta: e.target.value })}><option value="">Todos</option><option>Pendiente</option><option>Completada</option><option>Cancelada</option></select></Field><button className="button primary">Buscar</button></form>
+    <div className="section-title clients-list-heading"><div><h2>Ventas registradas</h2><p>Historial comercial con su detalle de productos.</p></div><span className="count-chip">{tableMeta.total || 0} registros</span></div>
+    <form className="form-card report-filters" onSubmit={searchSales}><Field label="Buscar cliente"><SearchInput label="Buscar cliente en ventas" path="/clients" value={clientSearch} onChange={value => { setClientSearch(value); setFilters(current => ({ ...current, id_cliente: /^\d+$/.test(value) ? value : '' })); }} onSelect={row => { const next = { ...filters, id_cliente: String(row.id_cliente) }; setFilters(next); setAppliedFilters(next); }} placeholder="Nombre, correo o ID" /></Field><Field label="Estado"><select value={filters.estado_venta} onChange={(e) => setFilters({ ...filters, estado_venta: e.target.value })}><option value="">Todos</option><option>Pendiente</option><option>Completada</option><option>Cancelada</option></select></Field><button className="button primary">Buscar</button></form>
     {salesError && <div className="notice error" role="alert">{salesError}</div>}
-    <section className="client-list-card"><div className="client-table-wrap"><table className="client-table"><thead><tr><th>Venta</th><th>Cliente</th><th>Vendedor</th><th>Productos</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
-      {sales.map((sale) => <tr key={sale.id_venta}><td><strong>#{sale.id_venta}</strong><small>{sale.numero_contrato || sale.metodo_pago || 'Sin contrato'}</small></td><td>{sale.nombre_completo}</td><td>{sale.nombre_vendedor}</td><td>{(sale.detalles || []).map((line) => `${line.nombre_producto} × ${line.cantidad}`).join(', ') || '—'}</td><td>{formatCurrency(sale.total_venta)}</td><td><span className="client-status">{sale.estado_venta}</span></td><td><button className="button" onClick={() => showDetail(sale)}>Detalle</button>{sale.estado_venta === 'Pendiente' && <><button className="button" onClick={() => editPending(sale)}>Editar</button>{isAdmin && <><button className="button" onClick={() => closeSale(sale, 'Completada')}>Completar</button><button className="button" onClick={() => closeSale(sale, 'Cancelada')}>Cancelar</button></>}</>}</td></tr>)}
+    <section className="client-list-card"><div className="client-table-wrap"><PagedTable managed className="client-table sales-table"><colgroup><col style={{ width: '7%' }} /><col style={{ width: '13%' }} /><col style={{ width: '12%' }} /><col style={{ width: '25%' }} /><col style={{ width: '12%' }} /><col style={{ width: '10%' }} /><col style={{ width: '21%' }} /></colgroup><thead><tr><th>Venta</th><th>Cliente</th><th>Vendedor</th><th>Productos</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
+      {sales.map((sale) => <tr key={sale.id_venta}><td data-label="Venta"><strong>#{sale.id_venta}</strong><small>{sale.numero_contrato || sale.metodo_pago || 'Sin contrato'}</small></td><td data-label="Cliente">{sale.nombre_completo}</td><td data-label="Vendedor">{sale.nombre_vendedor}</td><td data-label="Productos">{(sale.detalles || []).map((line) => `${line.nombre_producto} × ${line.cantidad}`).join(', ') || '—'}</td><td data-label="Total">{formatCurrency(sale.total_venta)}</td><td data-label="Estado"><span className="client-status">{sale.estado_venta}</span></td><td className="sales-actions-cell" data-label="Acciones"><div className="sales-actions"><button className="button action-button" onClick={() => showDetail(sale)}>Detalle</button>{sale.estado_venta === 'Pendiente' && <><button className="button action-button" onClick={() => editPending(sale)}>Editar</button>{isAdmin && <><button className="button action-button" onClick={() => closeSale(sale, 'Completada')}>Completar</button><button className="button action-button" onClick={() => closeSale(sale, 'Cancelada')}>Cancelar</button></>}</>}</div></td></tr>)}
       {!salesBusy && sales.length === 0 && <tr><td colSpan="7" className="client-empty">No hay ventas para mostrar.</td></tr>}
       {salesBusy && <tr><td colSpan="7" className="client-empty">Cargando ventas…</td></tr>}
-    </tbody></table></div></section>
-  </>;
+    </tbody></PagedTable></div><TablePagination page={tablePage} pages={tableMeta.pages || tableMeta.totalPages} total={tableMeta.total} size={tableSize} onSize={(value) => { setTablePage(1); setTableSize(value); }} onPage={refreshSales} disabled={salesBusy} /></section>
+  </div>;
 }

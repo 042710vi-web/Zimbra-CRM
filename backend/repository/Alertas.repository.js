@@ -5,7 +5,8 @@ import { sequelize } from '../config/database.js';
 import { httpError } from '../utils/validators.js';
 /** Consulta pendientes e historial con los filtros autorizados por el servicio. */
 export async function listAlerts({ id_vendedor, estado_alerta, tipo_alerta, page, limit, offset }) {
-  return procedurePage(await call('sp_listar_alertas', [id_vendedor, estado_alerta, tipo_alerta, limit, offset]), page, limit);
+  const result = procedurePage(await call('sp_listar_alertas', [id_vendedor, estado_alerta, tipo_alerta, limit, offset]), page, limit);
+  return { ...result, data: await withSellerNames(result.data) };
 }
 /** MySQL valida al usuario destinatario y conserva la atención en su historial. */
 export async function attendAlert({ id_alerta, nota_atencion, id_usuario, id_vendedor, usuario }) {
@@ -50,4 +51,12 @@ async function call(name, parameters = []) {
 function procedurePage(sets, page, limit, transform = row => row) {
   const total = Number(sets[1]?.[0]?.total || 0);
   return { data: (sets[0] || []).map(transform), pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+}
+
+export async function withSellerNames(rows = []) {
+  const ids = [...new Set(rows.map(row => Number(row.id_vendedor)).filter(id => Number.isSafeInteger(id) && id > 0))];
+  if (!ids.length) return rows.map(row => ({ ...row, nombre_vendedor: null }));
+  const [vendors] = await sequelize.query('SELECT id_vendedor, nombre_vendedor FROM vendedores WHERE id_vendedor IN (:ids)', { replacements: { ids } });
+  const names = new Map(vendors.map(row => [Number(row.id_vendedor), row.nombre_vendedor]));
+  return rows.map(row => ({ ...row, nombre_vendedor: names.get(Number(row.id_vendedor)) || null }));
 }

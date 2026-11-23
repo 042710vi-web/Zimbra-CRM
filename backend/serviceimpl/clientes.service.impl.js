@@ -19,7 +19,7 @@ import {
   requireOneOf,
   requireText,
 } from '../utils/validators.js';
-import { syncClientToSalesforce } from './salesforce.service.impl.js';
+import { syncClientToSalesforce, syncQualifiedClients } from './salesforce.service.impl.js';
 
 
 // HU-36: valida y normaliza los datos antes de llegar a la base de datos.
@@ -59,6 +59,7 @@ export async function registerClient(data = {}) {
 export async function registerPublicLead(data = {}) {
   const clave_rastreo = data.clave_rastreo == null ? null : requireText(data.clave_rastreo, 'La clave de rastreo', 100);
   const id_cliente = await upsertPublicLead(cleanClientData(data), clave_rastreo);
+  await syncQualifiedClients([id_cliente]);
   return { id_cliente, message: 'Lead recibido correctamente.' };
 }
 
@@ -116,7 +117,9 @@ export async function changeClientStatus(data = {}, user) {
     { id_cliente, estado_cliente },
     user?.email,
   );
-  if (['Calificado', 'Cliente', 'Convertido'].includes(estado_cliente)) {
+  if (estado_cliente === 'Calificado') {
+    await syncQualifiedClients([id_cliente]);
+  } else if (['Cliente', 'Convertido'].includes(estado_cliente)) {
     try {
       await syncClientToSalesforce(id_cliente);
     } catch (error) {

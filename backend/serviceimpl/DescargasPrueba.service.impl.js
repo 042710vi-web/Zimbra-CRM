@@ -1,3 +1,4 @@
+import { syncQualifiedClients } from './salesforce.service.impl.js';
 /** HU-09 a HU-11 - Descargas de prueba.
  * Revisa los datos y coordina las operaciones del módulo.
  */
@@ -22,6 +23,7 @@ export async function registerTrial(data = {}, user = {}) {
   const id_cliente = requireId(data.id_cliente, 'id_cliente');
   const id_producto = requireId(data.id_producto, 'id_producto');
   const result = await saveTrial({ id_cliente, id_producto, usuario: user.email });
+  await syncQualifiedClients([id_cliente]);
   // HU-19: el correo se solicita despues del COMMIT y no revierte la prueba.
   try {
     await sendAutomatedEmail({ id_cliente, id_descarga: result.id_descarga, evento: 'prueba_iniciada', variables: { nombre: result.nombre_cliente, fecha_fin: result.fecha_fin } });
