@@ -1,5 +1,6 @@
 import {
   createCompany,
+  getCompanyDetails,
   findCompanies,
 } from '../repository/empresas.repository.js';
 
@@ -11,7 +12,17 @@ import {
 } from '../utils/validators.js';
 
 // HU-09: listado para selectores y búsqueda.
-export const listCompanies = (query = {}) => findCompanies(String(query.q || '').trim());
+export async function companyDetails(id) {
+  const id_empresa = Number.parseInt(id, 10);
+  if (!Number.isInteger(id_empresa) || id_empresa < 1) throw Object.assign(new Error('El identificador de empresa no es válido.'), { status: 400 });
+  const detail = await getCompanyDetails(id_empresa);
+  if (!detail) throw Object.assign(new Error('No existe la empresa indicada.'), { status: 404 });
+  return detail;
+}
+
+export const listCompanies = (query = {}) => query.id_empresa
+  ? companyDetails(query.id_empresa)
+  : findCompanies(String(query.q || '').trim());
 
 // HU-09: registrar una nueva empresa (el nombre es único).
 export async function registerCompany(data = {}) {

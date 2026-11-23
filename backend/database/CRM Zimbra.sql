@@ -90,6 +90,9 @@ CREATE TABLE productos (
    tráfico con control de fechas. */
 CREATE TABLE campanas_marketing (
     id_campana INT AUTO_INCREMENT PRIMARY KEY,
+    /* HU-12/HU-13: nombre y código identifican de forma única a cada campaña.
+       Las campañas del conjunto de datos reciben un código legible estable. */
+    codigo_campana VARCHAR(50) NULL UNIQUE,
     nombre_campana VARCHAR(150) NOT NULL UNIQUE,
     descripcion TEXT,
     presupuesto DECIMAL(12,2),
@@ -110,20 +113,33 @@ CREATE TABLE acciones_marketing (
     CONSTRAINT chk_puntaje_positivo CHECK (puntaje BETWEEN 0 AND 100)
 );
 
+/* HU-15: el visitante conserva una clave hasta identificarse en HU-04.
+   Su fila se bloquea antes del cliente para coordinar formularios y eventos
+   concurrentes. La asociación persiste para las visitas posteriores. */
+CREATE TABLE visitantes_web (
+    clave_rastreo VARCHAR(100) PRIMARY KEY,
+    id_cliente INT NULL,
+    fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_cliente) REFERENCES clientes(id_cliente)
+) ENGINE = InnoDB;
+
 /* Registra cada interacción o evento que un cliente realiza dentro del
    sitio web. */
 CREATE TABLE actividad_web (
     id_actividad INT AUTO_INCREMENT PRIMARY KEY,
-    id_cliente INT NOT NULL,
+    id_cliente INT NULL,
     id_accion INT NOT NULL,
     id_campana INT,
+    clave_rastreo VARCHAR(100) NULL,
+    es_retorno BOOLEAN NOT NULL DEFAULT FALSE,
     fecha_actividad DATETIME DEFAULT CURRENT_TIMESTAMP,
     puntaje_otorgado INT NOT NULL DEFAULT 0,
     direccion_origen VARCHAR(255),
     detalle VARCHAR(255),
     FOREIGN KEY (id_cliente) REFERENCES clientes(id_cliente),
     FOREIGN KEY (id_accion) REFERENCES acciones_marketing(id_accion),
-    FOREIGN KEY (id_campana) REFERENCES campanas_marketing(id_campana)
+    FOREIGN KEY (id_campana) REFERENCES campanas_marketing(id_campana),
+    CONSTRAINT chk_actividad_identidad CHECK (id_cliente IS NOT NULL OR clave_rastreo IS NOT NULL)
 );
 
 /* Almacena la información general de cada contrato, método de pago y
@@ -301,21 +317,6 @@ CREATE TABLE salesforce_sincronizaciones (
     INDEX idx_sf_estado_fecha (estado, fecha_creacion),
     INDEX idx_sf_cliente_fecha (id_cliente, fecha_creacion)
 );
-
-/* HU-12/HU-13: nombre y código identifican de forma única a cada campaña.
-   Las campañas del conjunto de datos reciben un código legible estable. */
-ALTER TABLE campanas_marketing ADD codigo_campana VARCHAR(50) NULL;
-
-/* HU-15: el visitante conserva una clave hasta identificarse en HU-04.
-   Su fila se bloquea antes del cliente para coordinar formularios y eventos
-   concurrentes. La asociación persiste para las visitas posteriores. */
-CREATE TABLE visitantes_web(clave_rastreo VARCHAR(100) PRIMARY KEY, id_cliente INT NULL, fecha_creacion
-     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(id_cliente) REFERENCES clientes(id_cliente))
-     ENGINE = InnoDB;
-
-ALTER TABLE actividad_web MODIFY id_cliente INT NULL, ADD clave_rastreo VARCHAR(100) NULL, ADD es_retorno
-     BOOLEAN NOT NULL DEFAULT FALSE, ADD CONSTRAINT chk_actividad_identidad CHECK(id_cliente IS NOT NULL OR
-     clave_rastreo IS NOT NULL);
 
 -- =====================================================================
 -- 3. Inserciones y preparación de los datos iniciales
@@ -1087,10 +1088,8 @@ FROM clientes c WHERE c.id_cliente BETWEEN 1 AND 30;
 
 UPDATE campanas_marketing
 SET
-    codigo_campana = CONCAT('CAM-', LPAD(id_campana, 6, '0'));
-
-ALTER TABLE campanas_marketing MODIFY codigo_campana VARCHAR(50) NOT NULL, ADD CONSTRAINT uq_campana_codigo
-     UNIQUE(codigo_campana);
+    codigo_campana = CONCAT('CAM-', LPAD(id_campana, 6, '0'))
+WHERE id_campana > 0;
 
 -- =====================================================================
 -- 4. Funciones
@@ -1256,12 +1255,13 @@ BEGIN
     DECLARE v_desplazamiento INT DEFAULT 0;
     SET v_limite=LEAST(GREATEST(COALESCE(p_limite,50),1),200);
     SET v_desplazamiento=GREATEST(COALESCE(p_desplazamiento,0),0);
-    SELECT c.id_cliente,c.nombre_completo,c.correo_electronico,c.telefono,
+    SELECT c.id_cliente,c.id_empresa,c.nombre_completo,c.correo_electronico,c.telefono,
            c.estado_cliente,c.puntaje_total,c.fecha_registro,e.nombre_empresa
     FROM clientes c LEFT JOIN empresas e ON e.id_empresa=c.id_empresa
     WHERE (p_busqueda IS NULL OR p_busqueda='' OR
            c.nombre_completo LIKE CONCAT('%',p_busqueda,'%') OR
-           c.correo_electronico LIKE CONCAT('%',p_busqueda,'%'))
+           c.correo_electronico LIKE CONCAT('%',p_busqueda,'%') OR
+           e.nombre_empresa LIKE CONCAT('%',p_busqueda,'%'))
       AND (p_estado IS NULL OR p_estado='' OR c.estado_cliente=p_estado)
     ORDER BY c.fecha_registro DESC,c.id_cliente DESC
     LIMIT v_desplazamiento,v_limite;
@@ -1317,6 +1317,11 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='El cliente indicado no existe.';
     END IF;
     UPDATE clientes SET estado_cliente=p_estado WHERE id_cliente=p_id_cliente;
+    IF p_estado = 'Inactivo' THEN
+        UPDATE asignaciones_crm
+           SET estado = 'Finalizada', fecha_fin = NOW()
+         WHERE id_cliente = p_id_cliente AND estado = 'Activa';
+    END IF;
     COMMIT;
     SELECT p_id_cliente AS id_cliente,p_estado AS estado_cliente;
 END$$
@@ -3277,6 +3282,7 @@ WHERE d.estado_prueba = 'Activa'
 -- 8. Índices
 -- =====================================================================
 
+
 -- ÍNDICE 1: HU-18 – Búsqueda de plantillas por evento y estado
 CREATE INDEX idx_plantillas_evento_estado ON plantillas_correo(evento,estado);
 
@@ -3319,7 +3325,94 @@ CREATE INDEX idx_actividad_campana_fecha ON actividad_web (id_campana, fecha_act
 -- ÍNDICE 14: HU-04 / HU-15 – Búsqueda de actividades pendientes de identificar al visitante
 CREATE INDEX idx_actividad_visitante ON actividad_web (clave_rastreo, id_cliente, fecha_actividad, id_actividad);
 
--- =====================================================================
+-- SESION 4 | Endpoint: GET /api/reports/* | Responsable: Nicolas
+-- Pruebas de concurrencia: ejecutar manualmente en dos pestañas separadas.
+-- Permanecen comentadas para que el rayo no deje transacciones abiertas.
+/*
+-- Sesión A: bloquea el prospecto hasta confirmar o deshacer.
+START TRANSACTION;
+SELECT id_cliente FROM clientes WHERE id_cliente = 5 FOR UPDATE;
+-- Sesión B: espera el bloqueo de la fila hasta que A termine.
+START TRANSACTION;
+SELECT id_cliente FROM clientes WHERE id_cliente = 5 FOR UPDATE;
+-- Sesión A
+COMMIT;
+-- Sesión B
+ROLLBACK;
+
+-- Interbloqueo demostrable: cada sesión bloquea primero un cliente distinto.
+-- Sesión A: START TRANSACTION; UPDATE clientes SET telefono='3000000001' WHERE id_cliente=1;
+-- Sesión B: START TRANSACTION; UPDATE clientes SET telefono='3000000002' WHERE id_cliente=2;
+-- A: UPDATE clientes SET telefono='3000000003' WHERE id_cliente=2;
+-- B: UPDATE clientes SET telefono='3000000004' WHERE id_cliente=1; -- error 1213 esperado
+-- A: ROLLBACK;
+
+-- Dos cambios incrementales al mismo puntaje: B espera y ambos incrementos permanecen.
+-- Sesión A: START TRANSACTION; SELECT id_cliente FROM clientes WHERE id_cliente=1 FOR UPDATE;
+-- Sesión B: START TRANSACTION; UPDATE clientes SET puntaje_total=puntaje_total+10 WHERE id_cliente=1;
+-- Sesión A: UPDATE clientes SET puntaje_total=puntaje_total+10 WHERE id_cliente=1; COMMIT;
+-- Sesión B: COMMIT;
+
+-- Dos vendedores toman filas diferentes sin esperar (MySQL 8.0+).
+-- En cada sesión: START TRANSACTION;
+-- SELECT c.id_cliente FROM clientes c
+-- WHERE c.estado_cliente='Calificado'
+--   AND NOT EXISTS (SELECT 1 FROM asignaciones_crm a WHERE a.id_cliente=c.id_cliente AND a.estado='Activa')
+-- ORDER BY c.id_cliente LIMIT 1 FOR UPDATE SKIP LOCKED;
+-- COMMIT;
+
+-- Endpoint: monitoreo de bloqueos en MySQL Workbench | Responsable: Nicolas
+-- Ejecutar en una tercera pestaña mientras la otra sesión espera:
+-- SELECT * FROM performance_schema.data_locks;
+-- SELECT * FROM sys.innodb_lock_waits;
+-- SHOW ENGINE INNODB STATUS;
+*/
+
+-- SESION 4 | Endpoint: configuración de base de datos del backend | Responsable: Nicolas
+-- Roles y permisos MySQL para ejecución local en MySQL Workbench.
+CREATE ROLE IF NOT EXISTS 'zimbra_report_reader', 'zimbra_app_operator';
+CREATE USER IF NOT EXISTS 'zimbra_app'@'localhost' IDENTIFIED BY 'CambiarClaveApp#2026';
+CREATE USER IF NOT EXISTS 'report_user'@'localhost' IDENTIFIED BY 'CambiarClaveReportes#2026';
+ALTER USER 'zimbra_app'@'localhost' IDENTIFIED BY 'CambiarClaveApp#2026';
+ALTER USER 'report_user'@'localhost' IDENTIFIED BY 'CambiarClaveReportes#2026';
+
+GRANT SELECT ON zimbra_bd.vw_reporte_ventas TO 'zimbra_report_reader';
+GRANT SELECT ON zimbra_bd.vw_reporte_rendimiento_vendedores TO 'zimbra_report_reader';
+GRANT SELECT ON zimbra_bd.vw_reporte_interacciones TO 'zimbra_report_reader';
+GRANT SELECT ON zimbra_bd.vw_reporte_asignaciones TO 'zimbra_report_reader';
+GRANT SELECT ON zimbra_bd.vw_reporte_automatizacion TO 'zimbra_report_reader';
+GRANT SELECT ON zimbra_bd.vw_historial_cliente TO 'zimbra_report_reader';
+GRANT SELECT ON zimbra_bd.vw_calificados TO 'zimbra_report_reader';
+GRANT SELECT ON zimbra_bd.vw_pruebas_por_vencer TO 'zimbra_report_reader';
+
+GRANT SELECT, EXECUTE ON zimbra_bd.* TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.empresas TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.clientes TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.vendedores TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.usuarios TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.recuperacion_claves TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.productos TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.campanas_marketing TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.acciones_marketing TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.actividad_web TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.visitantes_web TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.ventas TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.detalle_ventas TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.descargas_prueba TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.asignaciones_crm TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.interacciones TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.alertas TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.plantillas_correo TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.correos_enviados TO 'zimbra_app_operator';
+GRANT INSERT, UPDATE ON zimbra_bd.salesforce_sincronizaciones TO 'zimbra_app_operator';
+GRANT INSERT ON zimbra_bd.auditoria_cambios TO 'zimbra_app_operator';
+GRANT 'zimbra_app_operator' TO 'zimbra_app'@'localhost';
+GRANT 'zimbra_report_reader' TO 'report_user'@'localhost';
+SET DEFAULT ROLE ALL TO 'zimbra_app'@'localhost', 'report_user'@'localhost';
+
+-- Validación de permisos (ejecutar si se desea revisar las cuentas creadas).
+SHOW GRANTS FOR 'zimbra_app'@'localhost' USING 'zimbra_app_operator';
+SHOW GRANTS FOR 'report_user'@'localhost' USING 'zimbra_report_reader';
 -- 9. Transacciones
 -- =====================================================================
 

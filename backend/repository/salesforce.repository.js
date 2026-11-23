@@ -1,6 +1,7 @@
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
 import { SalesforceSync } from '../entity/salesforce-sync.entity.js';
+import { callProcedure } from './storedProcedures.repository.js';
 
 export async function findClientForSalesforce(id_cliente) {
   const rows = await sequelize.query(
@@ -72,11 +73,9 @@ export async function findSyncAttempt(id_sincronizacion) {
 
 export async function listSyncAttempts({ page = 1, limit = 20, estado } = {}) {
   const where = estado ? { estado } : {};
-
-  return SalesforceSync.findAndCountAll({
-    where,
-    order: [['fecha_creacion', 'DESC']],
-    limit,
-    offset: (page - 1) * limit,
-  });
+  const [rows] = await callProcedure('sp_consultar_sincronizaciones_salesforce', [
+    estado || null, null, null, null, limit, (page - 1) * limit,
+  ]);
+  const count = await SalesforceSync.count({ where });
+  return { count, rows };
 }

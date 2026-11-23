@@ -1,5 +1,7 @@
-import { Op } from 'sequelize';
+import { QueryTypes } from 'sequelize';
+import { sequelize } from '../config/database.js';
 import { AuditoriaCambio } from '../entity/AuditoriaCambios.entity.js';
+import { callProcedure } from './storedProcedures.repository.js';
 
 export async function registerChanges({
   tabla,
@@ -32,27 +34,22 @@ export async function registerChanges({
 export async function listAudit(query = {}) {
   const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
   const limit = Math.min(100, Math.max(1, Number.parseInt(query.limit, 10) || 20));
-  const where = {};
-
-  if (query.tabla) where.tabla = String(query.tabla).slice(0, 50);
-
-  if (query.desde || query.hasta) {
-    where.fecha_cambio = {};
-    if (query.desde) where.fecha_cambio[Op.gte] = new Date(query.desde);
-    if (query.hasta) where.fecha_cambio[Op.lte] = new Date(query.hasta);
-
-    if (Number.isNaN(where.fecha_cambio[Op.gte]?.getTime?.()) ||
-        Number.isNaN(where.fecha_cambio[Op.lte]?.getTime?.())) {
-      throw Object.assign(new Error('El rango de fechas no es válido.'), {
-        status: 400,
-      });
-    }
+  const tabla = query.tabla ? String(query.tabla).slice(0, 50) : null;
+  const desde = query.desde ? new Date(query.desde) : null;
+  const hasta = query.hasta ? new Date(query.hasta) : null;
+  if ((desde && Number.isNaN(desde.getTime())) || (hasta && Number.isNaN(hasta.getTime()))) {
+    throw Object.assign(new Error('El rango de fechas no es válido.'), { status: 400 });
   }
-
-  return AuditoriaCambio.findAndCountAll({
-    where,
-    order: [['fecha_cambio', 'DESC']],
-    limit,
-    offset: (page - 1) * limit,
-  });
+  const params = { tabla, desde, hasta };
+  const [rows] = await callProcedure('sp_consultar_auditoria', [
+    params.tabla, desde, hasta, limit, (page - 1) * limit,
+  ]);
+  const [countRow] = await sequelize.query(
+    `SELECT COUNT(*) AS total FROM auditoria_cambios
+      WHERE (:tabla IS NULL OR :tabla = '' OR tabla = :tabla)
+        AND (:desde IS NULL OR fecha_cambio >= :desde)
+        AND (:hasta IS NULL OR fecha_cambio <= :hasta)`,
+    { replacements: params, type: QueryTypes.SELECT },
+  );
+  return { count: Number(countRow.total), rows };
 }
